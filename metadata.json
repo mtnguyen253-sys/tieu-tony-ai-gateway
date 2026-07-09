@@ -1,0 +1,6 @@
+{
+  "name": "Tiểu Tony AI Gateway",
+  "description": "Dự án Tiểu Tony - Phase 0: Nền móng cấu trúc thư mục và file khởi tạo cho AI Gateway",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

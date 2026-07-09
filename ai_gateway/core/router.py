@@ -1,0 +1,109 @@
+import time
+import logging
+from typing import Any, Dict, Optional
+from pydantic import BaseModel
+from ai_gateway.registry.capability import (
+    CapabilityRegistry,
+    TaskRequirement,
+    RoutingPolicy,
+    ScoringEngine,
+)
+from ai_gateway.core.circuit_breaker import CircuitBreaker
+
+logger = logging.getLogger(__name__)
+
+class RoutingDecision(BaseModel):
+    provider_name: str
+    provider: Any
+    score: float
+    reason: str
+    excluded_providers: Dict[str, str]
+    policy_used: RoutingPolicy
+    timestamp: float
+
+class NoProviderAvailableException(Exception):
+    """Raised when no provider meets the requirements or constraints."""
+    pass
+
+class PolicyRouter:
+    """Routes tasks to the most suitable AI provider based on capabilities and policies."""
+    
+    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None):
+        self.registry = registry
+        self.circuit_breaker = circuit_breaker
+
+    def route(
+        self,
+        requirement: TaskRequirement,
+        context: Dict[str, Any],
+        quotas: Dict[str, float],
+        policy: RoutingPolicy
+    ) -> RoutingDecision:
+        logger.info(f"Routing task: {requirement.task_type} with policy {policy.name}")
+        
+        candidates = self.registry.all()
+        excluded_providers: Dict[str, str] = {}
+        scored_providers = []
+
+        logger.info(f"Candidate Providers: {list(candidates.keys())}")
+
+        for name, capability in candidates.items():
+            # Circuit breaker check
+            if self.circuit_breaker and not self.circuit_breaker.is_available(name):
+                excluded_providers[name] = "Circuit breaker OPEN"
+                logger.info(f"Provider excluded: {name} - Reason: Circuit breaker OPEN")
+                continue
+
+            provider = self.registry.get_provider(name)
+            if not provider:
+                continue
+
+            health_info = provider.health()
+            is_healthy = health_info.get("status") == "ok"
+            quota = quotas.get(name, 1.0)
+            
+            # Constraints Check
+            if not ScoringEngine.constraints(capability, requirement, quota, is_healthy):
+                if quota <= 0:
+                    reason = "Out of quota"
+                elif not is_healthy:
+                    reason = "Provider unhealthy"
+                elif capability.context_window < requirement.required_context:
+                    reason = "Context window too small"
+                elif requirement.required_tools and not capability.tool_call:
+                    reason = "Tool calling not supported"
+                elif capability.cost > requirement.budget:
+                    reason = "Cost exceeds budget"
+                elif capability.latency > requirement.latency_requirement:
+                    reason = "Latency exceeds requirement"
+                else:
+                    reason = "Constraints not met"
+                
+                excluded_providers[name] = reason
+                logger.info(f"Provider excluded: {name} - Reason: {reason}")
+                continue
+            
+            # Score Calculation
+            score = ScoringEngine.score(capability, requirement, policy, quota)
+            scored_providers.append((score, name, provider))
+            logger.info(f"Score for {name}: {score:.4f}")
+
+        if not scored_providers:
+            logger.error("No provider available for routing.")
+            raise NoProviderAvailableException("No provider met the constraints.")
+
+        # Sort: Descending by score, Tie-break alphabetically by provider name
+        scored_providers.sort(key=lambda x: (-x[0], x[1]))
+        
+        best_score, best_name, best_provider = scored_providers[0]
+        logger.info(f"Selected Provider: {best_name} with score {best_score:.4f}")
+
+        return RoutingDecision(
+            provider_name=best_name,
+            provider=best_provider,
+            score=best_score,
+            reason=f"Highest score ({best_score:.2f})",
+            excluded_providers=excluded_providers,
+            policy_used=policy,
+            timestamp=time.time()
+        )
