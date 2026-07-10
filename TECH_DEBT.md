@@ -80,3 +80,21 @@
 - **Status**: Open
 - **Created**: Sprint 17
 - **Recommendation**: Xây dựng module middleware/dependency để kiểm tra Bearer Token hợp lệ.
+
+## TD-010
+- **Title**: Provider Error Schema Standardization
+- **Description**: Error mapping đang implement trực tiếp trong app.py cho từng HTTP Status. Khi thêm nhiều Provider, có thể cần một Error mapper riêng để giữ code DRY.
+- **Impact**: Code trong app.py có thể trở nên rối khi có quá nhiều logic handle lỗi đặc thù.
+- **Priority**: Low
+- **Status**: Open
+- **Created**: Sprint 20A
+- **Recommendation**: Xây dựng ErrorMapper utility hoặc Middleware để gom nhóm xử lý lỗi thành chuẩn OpenAI chung.
+
+## TD-011
+- **Title**: In-memory Cooldown State
+- **Description**: `ProviderCooldownManager` hiện tại đang lưu trạng thái cooldown in-memory bằng dictionary. Khi triển khai multi-process hoặc multi-instance (VD: Gunicorn/Uvicorn workers, K8s pods), trạng thái này sẽ không được đồng bộ, dẫn đến việc rate limit vẫn có thể bị chạm (dumb retry trên các instance khác).
+- **Impact**: Không hoạt động đúng trong môi trường distributed.
+- **Priority**: Medium
+- **Status**: Open
+- **Created**: Sprint 20B
+- **Recommendation**: Triển khai shared store (như Redis) để quản lý cooldown state cho toàn bộ Gateway cluster.

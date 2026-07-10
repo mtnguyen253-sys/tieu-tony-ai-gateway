@@ -9,6 +9,7 @@ from ai_gateway.registry.capability import (
     ScoringEngine,
 )
 from ai_gateway.core.circuit_breaker import CircuitBreaker
+from ai_gateway.core.cooldown import ProviderCooldownManager
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,10 @@ class NoProviderAvailableException(Exception):
 class PolicyRouter:
     """Routes tasks to the most suitable AI provider based on capabilities and policies."""
     
-    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None):
+    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None):
         self.registry = registry
         self.circuit_breaker = circuit_breaker
+        self.cooldown_manager = cooldown_manager
 
     def route(
         self,
@@ -47,11 +49,26 @@ class PolicyRouter:
 
         logger.info(f"Candidate Providers: {list(candidates.keys())}")
 
+        already_excluded = context.get("excluded_providers", [])
         for name, capability in candidates.items():
+            if name in already_excluded:
+                excluded_providers[name] = "Excluded by context/fallback"
+                continue
+            
             # Circuit breaker check
             if self.circuit_breaker and not self.circuit_breaker.is_available(name):
                 excluded_providers[name] = "Circuit breaker OPEN"
                 logger.info(f"Provider excluded: {name} - Reason: Circuit breaker OPEN")
+                continue
+                
+            # Cooldown check
+            requested_model = getattr(requirement, "model", None)
+            if requested_model is None and isinstance(context, dict):
+                requested_model = context.get("model") or context.get("model_id") or context.get("requested_model")
+
+            if self.cooldown_manager and self.cooldown_manager.is_cooldown(name, requested_model):
+                excluded_providers[name] = "Provider/Model in cooldown"
+                logger.info(f"Provider excluded: {name} - Reason: Cooldown active")
                 continue
 
             provider = self.registry.get_provider(name)
