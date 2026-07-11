@@ -153,3 +153,55 @@ curl.exe -N -X POST http://127.0.0.1:8000/chat/completions `
   -H "Content-Type: application/json" `
   --data-binary "@stream_body.json"
 ```
+
+## 9. Testing OpenAI SDK Compatibility
+Gateway hỗ trợ OpenAI Python SDK tương thích hoàn toàn.
+Run gateway:
+```powershell
+$env:OPENROUTER_API_KEY="..."
+$env:OPENROUTER_MODEL="qwen/qwen3.6-plus"
+python -m uvicorn ai_gateway.api.app:app --reload
+```
+
+Test OpenAI SDK:
+```powershell
+python -m pip install openai
+$env:AI_GATEWAY_BASE_URL="http://127.0.0.1:8000/v1"
+$env:AI_GATEWAY_API_KEY="dummy"
+$env:AI_GATEWAY_MODEL="qwen/qwen3.6-plus"
+python examples/smoke_openai_sdk.py
+```
+
+Curl compatibility:
+```powershell
+curl http://127.0.0.1:8000/v1/models
+@'
+{
+  "model": "qwen/qwen3.6-plus",
+  "messages": [
+    {"role": "user", "content": "Say hello in Vietnamese"}
+  ]
+}
+'@ | Set-Content -Encoding UTF8 body.json
+
+curl.exe -X POST http://127.0.0.1:8000/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  --data-binary "@body.json"
+```
+
+Streaming:
+```powershell
+@'
+{
+  "model": "qwen/qwen3.6-plus",
+  "messages": [
+    {"role": "user", "content": "Say hello in Vietnamese"}
+  ],
+  "stream": true
+}
+'@ | Set-Content -Encoding UTF8 stream_body.json
+
+curl.exe -N -X POST http://127.0.0.1:8000/v1/chat/completions `
+  -H "Content-Type: application/json" `
+  --data-binary "@stream_body.json"
+```

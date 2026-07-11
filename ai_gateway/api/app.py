@@ -56,6 +56,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         )
 
     @app.get("/health")
+    @app.get("/v1/health")
     async def health_check():
         """Returns service health."""
         return {
@@ -65,6 +66,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         }
 
     @app.get("/models")
+    @app.get("/v1/models")
     async def list_models():
         """Returns available models in OpenAI-compatible format."""
         providers = list(registry.all().keys()) if hasattr(registry, 'all') else []
@@ -92,6 +94,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         }
 
     @app.post("/chat/completions", response_model=ChatCompletionResponse)
+    @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
     async def chat_completions(req: ChatCompletionRequest):
         """OpenAI-compatible chat completions endpoint."""
         

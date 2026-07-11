@@ -91,3 +91,27 @@ def test_chat_completions_no_provider():
     assert json_resp["error"]["type"] == "provider_unavailable"
     assert json_resp["error"]["code"] == "no_provider_available"
 
+
+def test_v1_health_check():
+    response = client.get("/v1/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+def test_v1_list_models():
+    response = client.get("/v1/models")
+    assert response.status_code == 200
+    assert response.json()["object"] == "list"
+
+def test_v1_chat_completions_success():
+    payload = {
+        "model": "gpt-3.5-turbo",
+        "messages": [
+            {"role": "user", "content": "Hi"}
+        ]
+    }
+    response = client.post("/v1/chat/completions", json=payload)
+    assert response.status_code == 200
+    json_resp = response.json()
+    assert "choices" in json_resp
+    assert len(json_resp["choices"]) > 0
+    assert json_resp["choices"][0]["message"]["content"] == "Hello there!"
