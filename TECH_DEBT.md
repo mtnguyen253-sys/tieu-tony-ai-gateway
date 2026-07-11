@@ -98,3 +98,9 @@
 - **Status**: Open
 - **Created**: Sprint 20B
 - **Recommendation**: Triển khai shared store (như Redis) để quản lý cooldown state cho toàn bộ Gateway cluster.
+
+### Sprint 20C - Usage & Cost Ledger
+- **Static Pricing Table**: Currently, model prices are hardcoded in `ai_gateway/config/model_prices.py`. This table needs to be auto-refreshed or managed via external configuration in the future.
+- **Single-instance Ledger**: `JsonlUsageLedger` writes to local files, which is not suitable for multi-instance deployments. Needs an upgrade to SQLite, Postgres, ClickHouse, or an external metrics backend.
+- **Lack of Quality Metric**: We record usage and error, but lack a quality score (e.g., user feedback) to optimize routing based on response quality.
+- **Missing Budget-aware Router**: Usage is recorded but not yet used by the Router to enforce budget caps dynamically.

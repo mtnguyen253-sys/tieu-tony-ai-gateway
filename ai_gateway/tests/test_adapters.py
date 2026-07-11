@@ -90,3 +90,125 @@ def test_google_free_adapter_chat_integrity():
     assert "Mocked Google Free response" in response.content
     assert adapter.estimate_cost(req) == 0.0
 
+
+@patch("ai_gateway.adapters.openrouter.httpx.Client")
+def test_openrouter_adapter_401(mock_client_class):
+    adapter = OpenRouterAdapter(api_key="test-key")
+    req = AgentRequest(request_id="req_or", messages=[{"role": "user", "content": "Hi OR!"}])
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 401
+    
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    from ai_gateway.core.executor import AuthenticationException
+    with pytest.raises(AuthenticationException):
+        adapter.chat(req)
+
+@patch("ai_gateway.adapters.openrouter.httpx.Client")
+def test_openrouter_adapter_429(mock_client_class):
+    adapter = OpenRouterAdapter(api_key="test-key")
+    req = AgentRequest(request_id="req_or", messages=[{"role": "user", "content": "Hi OR!"}])
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    from ai_gateway.core.executor import RateLimitException
+    with pytest.raises(RateLimitException):
+        adapter.chat(req)
+
+@patch("ai_gateway.adapters.openrouter.httpx.Client")
+def test_openrouter_adapter_500(mock_client_class):
+    adapter = OpenRouterAdapter(api_key="test-key")
+    req = AgentRequest(request_id="req_or", messages=[{"role": "user", "content": "Hi OR!"}])
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    from ai_gateway.core.executor import ProviderUnavailableException
+    with pytest.raises(ProviderUnavailableException):
+        adapter.chat(req)
+
+@patch("ai_gateway.adapters.openrouter.httpx.Client")
+def test_openrouter_adapter_timeout(mock_client_class):
+    adapter = OpenRouterAdapter(api_key="test-key")
+    req = AgentRequest(request_id="req_or", messages=[{"role": "user", "content": "Hi OR!"}])
+    
+    import httpx
+    mock_client = MagicMock()
+    mock_client.post.side_effect = httpx.TimeoutException("Timeout")
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    from ai_gateway.core.executor import TimeoutException
+    with pytest.raises(TimeoutException):
+        adapter.chat(req)
+
+@patch("ai_gateway.adapters.openrouter.httpx.Client")
+def test_openrouter_adapter_model_normalization(mock_client_class):
+    adapter = OpenRouterAdapter(api_key="test-key")
+    req = AgentRequest(request_id="req_or", messages=[{"role": "user", "content": "Hi OR!"}])
+    
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": "ok"}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+        "model": "qwen/qwen-turbo"
+    }
+    
+    mock_client = MagicMock()
+    mock_client.post.return_value = mock_response
+    mock_client_class.return_value.__enter__.return_value = mock_client
+    
+    resp = adapter.chat(req)
+    assert resp.model == "qwen/qwen-turbo"
+
+
+def test_openrouter_adapter_usage_extraction():
+    from ai_gateway.adapters.openrouter import OpenRouterAdapter
+    import httpx
+    
+    adapter = OpenRouterAdapter(api_key="test")
+    
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json_data = json_data
+            self.status_code = status_code
+        def json(self):
+            return self._json_data
+            
+    mock_data = {
+        "id": "gen-123",
+        "model": "openrouter/qwen-plus",
+        "choices": [{"message": {"content": "hello"}}],
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+            "total_tokens": 30,
+            "prompt_tokens_details": {
+                "cached_tokens": 5
+            }
+        }
+    }
+    
+    import unittest.mock as mock
+    with mock.patch("httpx.Client.post", return_value=MockResponse(mock_data)):
+        req = AgentRequest(request_id="req1", messages=[])
+        resp = adapter.chat(req)
+        
+        assert resp.model == "openrouter/qwen-plus"
+        assert resp.usage["prompt_tokens"] == 10
+        assert resp.usage["completion_tokens"] == 20
+        assert resp.usage["total_tokens"] == 30
+        assert resp.usage.get("prompt_tokens_details", {}).get("cached_tokens") == 5
+

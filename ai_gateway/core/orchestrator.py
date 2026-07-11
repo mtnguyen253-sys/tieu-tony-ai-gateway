@@ -47,7 +47,9 @@ class ExecutionOrchestrator:
             def _inner():
                 return self.engine.execute(
                     request=request,
-                    provider=provider
+                    provider=provider,
+                    fallback_count=len(context.get("excluded_providers", [])),
+                    policy=policy.name if policy else None
                 )
             return self.retry_strategy.execute(_inner)
             

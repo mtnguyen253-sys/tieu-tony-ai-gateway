@@ -25,6 +25,7 @@ class AgentResponse(BaseModel):
     content: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
     usage: Dict[str, Any]
+    model: Optional[str] = None
 
 
 class ContextSnapshot(BaseModel):

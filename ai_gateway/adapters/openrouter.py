@@ -4,7 +4,7 @@ import httpx
 from typing import Generator, Dict, Any
 from ai_gateway.adapters.base import BaseProvider
 from ai_gateway.protocols.cap import AgentRequest, AgentResponse, ToolCall
-from ai_gateway.core.executor import ProviderUnavailableException, AuthenticationException
+from ai_gateway.core.executor import ProviderUnavailableException, AuthenticationException, RateLimitException, TimeoutException
 
 class OpenRouterAdapter(BaseProvider):
     """
@@ -55,26 +55,33 @@ class OpenRouterAdapter(BaseProvider):
                     timeout=30.0
                 )
                 
-                if resp.status_code == 401:
-                    raise AuthenticationException("Invalid OpenRouter API Key")
+                if resp.status_code in (401, 403):
+                    raise AuthenticationException(f"OpenRouter authentication/authorization error: {resp.status_code}")
+                elif resp.status_code == 429:
+                    retry_after = resp.headers.get("Retry-After")
+                    try:
+                        retry_after_val = float(retry_after) if retry_after else 60.0
+                    except (ValueError, TypeError):
+                        retry_after_val = 60.0
+                    raise RateLimitException(f"OpenRouter rate limit exceeded", retry_after=retry_after_val, model=self.default_model)
                 elif resp.status_code >= 500:
                     raise ProviderUnavailableException(f"OpenRouter returned {resp.status_code}")
                 elif resp.status_code != 200:
-                    raise ProviderUnavailableException(f"OpenRouter returned error: {resp.text}")
+                    raise ProviderUnavailableException(f"OpenRouter returned error {resp.status_code}: {resp.text}")
                     
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"]
                 usage = data.get("usage", {})
+                resolved_model = data.get("model") or self.default_model
                 
                 return AgentResponse(
                     response_id=f"or_res_{uuid.uuid4().hex[:8]}",
                     content=content,
-                    usage={
-                        "prompt_tokens": usage.get("prompt_tokens", 0),
-                        "completion_tokens": usage.get("completion_tokens", 0),
-                        "total_tokens": usage.get("total_tokens", 0)
-                    }
+                    usage=usage,
+                    model=resolved_model
                 )
+        except httpx.TimeoutException as e:
+            raise TimeoutException(f"OpenRouter request timed out: {e}")
         except httpx.RequestError as e:
             raise ProviderUnavailableException(f"Failed to connect to OpenRouter: {e}")
 

@@ -15,7 +15,7 @@ class MockExecutionEngine:
         self.response = response
         self.exception = exception
 
-    def execute(self, request, provider=None):
+    def execute(self, request, provider=None, **kwargs):
         if self.exception:
             raise self.exception
         return self.response
