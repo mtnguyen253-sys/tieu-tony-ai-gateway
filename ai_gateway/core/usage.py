@@ -26,6 +26,7 @@ class UsageEvent(BaseModel):
     retry_count: int = 0
     cooldown_triggered: bool = False
     route_policy: Optional[str] = None
+    stream: bool = False
 
 class UsageLedger(ABC):
     @abstractmethod

@@ -115,3 +115,41 @@ python -m ai_gateway.tools.usage_summary logs\\usage.jsonl
 ```
 ## 8. Dừng Server
 Tại terminal đang chạy Uvicorn, nhấn `Ctrl + C` để dừng server.
+
+### 7.5. Test Streaming Runtime (Có cấu hình API Key)
+
+(Yêu cầu server chạy qua `ai_gateway.api.app:app` và đã set OPENROUTER_API_KEY)
+
+Terminal 1:
+```powershell
+$env:OPENROUTER_API_KEY="..."
+$env:OPENROUTER_MODEL="qwen/qwen3.6-plus"
+python -m uvicorn ai_gateway.api.app:app --reload
+```
+
+Terminal 2:
+```powershell
+python examples/smoke_streaming.py
+```
+
+**Kỳ vọng:**
+- Server kết nối OpenRouter.
+- Nội dung trả về dưới dạng từng chunk một in ra console.
+- Nhận được dòng `[DONE]` và thông tin `usage` (nếu provider hỗ trợ).
+
+Nếu bạn muốn test bằng `curl`:
+```powershell
+@'
+{
+  "model": "qwen/qwen3.6-plus",
+  "messages": [
+    {"role": "user", "content": "Say hello in Vietnamese"}
+  ],
+  "stream": true
+}
+'@ | Set-Content -Encoding UTF8 stream_body.json
+
+curl.exe -N -X POST http://127.0.0.1:8000/chat/completions `
+  -H "Content-Type: application/json" `
+  --data-binary "@stream_body.json"
+```

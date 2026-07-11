@@ -114,3 +114,10 @@
 - **Budget State**: Chưa có persistent multi-instance budget state (cần Redis).
 - **Quality Score**: Chưa có quality score/user feedback cho budget routing.
 - **Price Refresh**: Chưa có automatic price refresh cho các model.
+
+### Sprint 22 - Basic Streaming Support
+- **Mid-stream Fallback Chưa Hỗ Trợ**: Nếu provider bị lỗi trong quá trình đang stream (đã gửi chunk đầu tiên), API chỉ trả về một chunk error (`finish_reason: error`) và kết thúc stream, thay vì transparently fallback qua provider khác. Fallback giữa chừng với LLM là rất khó do context và partial content.
+- **Thiếu Usage Trong Streaming**: Một số provider khi streaming không trả về metadata usage (token counts). UsageLedger đang được handle an toàn (record `None`) nhưng điều này làm giảm độ chính xác của cost tracking nếu provider không hỗ trợ tuỳ chọn "include_usage".
+- **Streaming Retry Chỉ Áp Dụng Trước Khi Bắt Đầu**: `RetryStrategy` và `FallbackStrategy` chỉ catch được lỗi kết nối ban đầu, không áp dụng cho lỗi bị đứt gãy giữa chừng.
+- **Streaming Tool Calls Chưa Hoàn Thiện**: Streaming hiện tại chỉ parse chunk text cơ bản, chưa hỗ trợ đầy đủ các delta của function/tool calls nếu có.
+- **SSE Client Compatibility**: Cần test thêm với các client chuẩn (OpenAI SDK, Codex, OpenClaw) để đảm bảo không có vấn đề tương thích về timing hoặc format chunk.

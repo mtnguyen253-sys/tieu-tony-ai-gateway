@@ -1,0 +1,10 @@
+﻿{
+  "model": "qwen/qwen3.6-plus",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Say hello in Vietnamese"
+    }
+  ],
+  "stream": true
+}

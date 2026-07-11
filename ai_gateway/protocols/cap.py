@@ -18,6 +18,7 @@ class AgentRequest(BaseModel):
     request_id: str
     messages: List[Dict[str, Any]]
     tools: Optional[List[Dict[str, Any]]] = None
+    stream: bool = False
 
 
 class AgentResponse(BaseModel):

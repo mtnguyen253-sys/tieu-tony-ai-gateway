@@ -85,8 +85,107 @@ class OpenRouterAdapter(BaseProvider):
         except httpx.RequestError as e:
             raise ProviderUnavailableException(f"Failed to connect to OpenRouter: {e}")
 
-    def stream(self, request: AgentRequest) -> Generator[AgentResponse, None, None]:
-        raise NotImplementedError("Streaming not supported yet")
+    def stream(self, request: AgentRequest):
+        import json
+        or_messages = []
+        for msg in request.messages:
+            or_messages.append({
+                "role": msg.get("role", "user"),
+                "content": msg.get("content", "")
+            })
+            
+        payload = {
+            "model": self.default_model,
+            "messages": or_messages,
+            "stream": True
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer": "http://localhost:8000",
+            "X-Title": "Tieu Tony AI Gateway"
+        }
+        
+        try:
+            # We must use stream context manager and yield from it
+            # But since httpx.Client().stream() needs to be kept open during yield,
+            # we use it as below:
+            client = httpx.Client()
+            req = client.build_request(
+                "POST",
+                "https://openrouter.ai/api/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=30.0
+            )
+            resp = client.send(req, stream=True)
+            
+            if resp.status_code in (401, 403):
+                resp.read()
+                resp.close()
+                client.close()
+                raise AuthenticationException(f"OpenRouter authentication/authorization error: {resp.status_code}")
+            elif resp.status_code == 429:
+                retry_after = resp.headers.get("Retry-After")
+                try:
+                    retry_after_val = float(retry_after) if retry_after else 60.0
+                except (ValueError, TypeError):
+                    retry_after_val = 60.0
+                resp.read()
+                resp.close()
+                client.close()
+                raise RateLimitException(f"OpenRouter rate limit exceeded", retry_after=retry_after_val, model=self.default_model)
+            elif resp.status_code >= 500:
+                resp.read()
+                resp.close()
+                client.close()
+                raise ProviderUnavailableException(f"OpenRouter returned {resp.status_code}")
+            elif resp.status_code != 200:
+                err_text = resp.read().decode()
+                resp.close()
+                client.close()
+                raise ProviderUnavailableException(f"OpenRouter returned error {resp.status_code}: {err_text}")
+                
+            def _generator():
+                try:
+                    for line in resp.iter_lines():
+                        if line:
+                            line = line.strip()
+                            if line.startswith("data: "):
+                                data_str = line[6:]
+                                if data_str == "[DONE]":
+                                    break
+                                try:
+                                    chunk = json.loads(data_str)
+                                    content = None
+                                    finish_reason = None
+                                    if chunk.get("choices") and len(chunk["choices"]) > 0:
+                                        delta = chunk["choices"][0].get("delta", {})
+                                        content = delta.get("content")
+                                        finish_reason = chunk["choices"][0].get("finish_reason")
+                                    
+                                    usage = chunk.get("usage")
+                                    model = chunk.get("model") or self.default_model
+                                    
+                                    yield {
+                                        "content": content,
+                                        "finish_reason": finish_reason,
+                                        "usage": usage,
+                                        "model": model,
+                                        "raw": chunk
+                                    }
+                                except json.JSONDecodeError:
+                                    pass
+                finally:
+                    resp.close()
+                    client.close()
+            
+            return _generator()
+
+        except httpx.TimeoutException as e:
+            raise TimeoutException(f"OpenRouter request timed out: {e}")
+        except httpx.RequestError as e:
+            raise ProviderUnavailableException(f"Failed to connect to OpenRouter: {e}")
 
     def tool_call(self, request: AgentRequest) -> AgentResponse:
         raise NotImplementedError("Tool calls not supported yet")

@@ -72,3 +72,47 @@ class ExecutionOrchestrator:
             execution_time = time.time() - start_time
             self.logger.error(f"Orchestrator failure for request {request.request_id} in {execution_time:.4f}s. Reason: {e}")
             raise
+
+
+    def execute_stream(
+        self,
+        request: AgentRequest,
+        requirement: Optional[TaskRequirement] = None,
+        context: Optional[Dict[str, Any]] = None,
+        quotas: Optional[Dict[str, float]] = None,
+        policy: Optional[RoutingPolicy] = None
+    ):
+        self.logger.info(f"Orchestrator started stream for request {request.request_id}")
+        start_time = time.time()
+        
+        requirement = requirement or TaskRequirement()
+        context = context or {}
+        quotas = quotas or {}
+        policy = policy or RoutingPolicy.BALANCED
+
+        def _operation(provider: BaseProvider):
+            def _inner():
+                return self.engine.execute_stream(
+                    request=request,
+                    provider=provider,
+                    fallback_count=len(context.get("excluded_providers", [])),
+                    policy=policy.name if policy else None
+                )
+            return self.retry_strategy.execute(_inner)
+            
+        try:
+            if isinstance(self.fallback_strategy, NoFallbackStrategy):
+                decision = self.router.route(requirement, context, quotas, policy)
+                return _operation(decision.provider)
+            else:
+                return self.fallback_strategy.execute(
+                    _operation,
+                    requirement=requirement,
+                    context=context,
+                    quotas=quotas,
+                    policy=policy
+                )
+        except Exception as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"Orchestrator failure for stream request {request.request_id} in {execution_time:.4f}s. Reason: {e}")
+            raise
