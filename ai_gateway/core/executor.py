@@ -1,3 +1,4 @@
+from ai_gateway.core.budget import BudgetManager
 import time
 import logging
 from typing import Dict, Any, Optional
@@ -43,12 +44,14 @@ class ExecutionEngine:
         cooldown_manager: Optional[ProviderCooldownManager] = None,
         usage_ledger: Optional[UsageLedger] = None,
         cost_estimator: Optional[CostEstimator] = None,
+        budget_manager: Optional[BudgetManager] = None,
         logger: Optional[logging.Logger] = None
     ):
         self.circuit_breaker = circuit_breaker
         self.cooldown_manager = cooldown_manager
         self.usage_ledger = usage_ledger
         self.cost_estimator = cost_estimator
+        self.budget_manager = budget_manager
         self.logger = logger or logging.getLogger(__name__)
 
     def execute(
@@ -84,6 +87,49 @@ class ExecutionEngine:
         start_time = time.time()
         
         def _record_usage(status, error_type=None, error_code=None, cooldown_triggered=False, response=None, latency_ms=None):
+            input_tokens = None
+            cached_input_tokens = None
+            output_tokens = None
+            total_tokens = None
+            model = getattr(provider, 'default_model', None)
+            resolved_model = model
+            estimated_cost = None
+
+            if response and response.usage:
+                usage = response.usage
+                input_tokens = usage.get("prompt_tokens")
+                output_tokens = usage.get("completion_tokens")
+                total_tokens = usage.get("total_tokens")
+                prompt_details = usage.get("prompt_tokens_details", {})
+                cached_input_tokens = prompt_details.get("cached_tokens")
+                
+                if response.model:
+                    resolved_model = response.model
+                    
+                if self.cost_estimator:
+                    estimated_cost = self.cost_estimator.estimate(
+                        provider=provider_name,
+                        model=resolved_model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        cached_input_tokens=cached_input_tokens
+                    )
+
+            if self.budget_manager:
+                if status == "success":
+                    self.budget_manager.record_success(
+                        provider_name, 
+                        latency_ms=latency_ms,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens
+                    )
+                    if estimated_cost is not None:
+                        self.budget_manager.record_spend(provider_name, estimated_cost)
+                elif error_type == "RateLimitException":
+                    self.budget_manager.record_rate_limit(provider_name)
+                else:
+                    self.budget_manager.record_error(provider_name)
+
             if not self.usage_ledger:
                 return
             

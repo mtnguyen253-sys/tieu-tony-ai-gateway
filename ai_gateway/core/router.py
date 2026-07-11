@@ -1,3 +1,4 @@
+from ai_gateway.core.budget import BudgetManager
 import time
 import logging
 from typing import Any, Dict, Optional
@@ -29,10 +30,11 @@ class NoProviderAvailableException(Exception):
 class PolicyRouter:
     """Routes tasks to the most suitable AI provider based on capabilities and policies."""
     
-    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None):
+    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None, budget_manager: Optional[BudgetManager] = None):
         self.registry = registry
         self.circuit_breaker = circuit_breaker
         self.cooldown_manager = cooldown_manager
+        self.budget_manager = budget_manager
 
     def route(
         self,
@@ -100,10 +102,27 @@ class PolicyRouter:
                 logger.info(f"Provider excluded: {name} - Reason: {reason}")
                 continue
             
+            # Budget & Penalty checks
+            mode = "normal"
+            prefer_cheaper = True
+            penalty = 0.0
+            
+            if self.budget_manager:
+                mode = self.budget_manager.policy.mode
+                prefer_cheaper = self.budget_manager.policy.prefer_cheaper_models
+                penalty = self.budget_manager.get_penalty(name)
+                
+                # We can do a rudimentary budget check if capability has a typical cost
+                # For instance, if capability.cost > 0:
+                if not self.budget_manager.check_budget_for_request(capability.cost):
+                    excluded_providers[name] = "Budget limit exceeded"
+                    logger.info(f"Provider excluded: {name} - Reason: Budget limit exceeded")
+                    continue
+
             # Score Calculation
-            score = ScoringEngine.score(capability, requirement, policy, quota)
+            score = ScoringEngine.score(capability, requirement, policy, quota, mode, prefer_cheaper, penalty)
             scored_providers.append((score, name, provider))
-            logger.info(f"Score for {name}: {score:.4f}")
+            logger.info(f"Score for {name}: {score:.4f} (penalty: {penalty:.2f})")
 
         if not scored_providers:
             logger.error("No provider available for routing.")

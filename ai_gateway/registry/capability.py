@@ -89,19 +89,32 @@ class ScoringEngine:
         return True
 
     @staticmethod
-    def weight(policy: RoutingPolicy) -> Dict[str, float]:
+    def weight(policy: RoutingPolicy, mode: str = "normal", prefer_cheaper: bool = True) -> Dict[str, float]:
         if policy == RoutingPolicy.QUALITY_FIRST:
-            return {"quality": 0.7, "cost": 0.1, "latency": 0.1, "quota": 0.1}
+            weights = {"quality": 0.7, "cost": 0.1, "latency": 0.1, "quota": 0.1}
         elif policy == RoutingPolicy.COST_FIRST:
-            return {"quality": 0.2, "cost": 0.6, "latency": 0.1, "quota": 0.1}
+            weights = {"quality": 0.2, "cost": 0.6, "latency": 0.1, "quota": 0.1}
         elif policy == RoutingPolicy.LATENCY_FIRST:
-            return {"quality": 0.2, "cost": 0.1, "latency": 0.6, "quota": 0.1}
+            weights = {"quality": 0.2, "cost": 0.1, "latency": 0.6, "quota": 0.1}
         else:  # BALANCED
-            return {"quality": 0.4, "cost": 0.3, "latency": 0.2, "quota": 0.1}
+            weights = {"quality": 0.4, "cost": 0.3, "latency": 0.2, "quota": 0.1}
+            
+        if mode == "emergency":
+            # Budget emergency: strongly prioritize cost, minimize quality/latency weight
+            weights["cost"] = min(1.0, weights["cost"] + 0.6)
+            weights["quality"] = max(0.0, weights["quality"] - 0.3)
+            weights["latency"] = max(0.0, weights["latency"] - 0.3)
+        elif mode == "economy" or (prefer_cheaper and policy != RoutingPolicy.QUALITY_FIRST):
+            # Increase cost weight
+            weights["cost"] = min(1.0, weights["cost"] + 0.3)
+            weights["quality"] = max(0.0, weights["quality"] - 0.15)
+            weights["latency"] = max(0.0, weights["latency"] - 0.15)
+            
+        return weights
 
     @staticmethod
-    def score(capability: ProviderCapability, requirement: TaskRequirement, policy: RoutingPolicy, quota: float) -> float:
-        weights = ScoringEngine.weight(policy)
+    def score(capability: ProviderCapability, requirement: TaskRequirement, policy: RoutingPolicy, quota: float, mode: str = "normal", prefer_cheaper: bool = True, penalty: float = 0.0) -> float:
+        weights = ScoringEngine.weight(policy, mode, prefer_cheaper)
 
         # Base quality score on task type
         quality_score = 0.0
@@ -131,4 +144,5 @@ class ScoringEngine:
             latency_score * weights["latency"] +
             quota_score * weights["quota"]
         )
+        final_score = max(0.0, final_score - penalty)
         return final_score
