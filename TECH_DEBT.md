@@ -104,3 +104,13 @@
 - **Single-instance Ledger**: `JsonlUsageLedger` writes to local files, which is not suitable for multi-instance deployments. Needs an upgrade to SQLite, Postgres, ClickHouse, or an external metrics backend.
 - **Lack of Quality Metric**: We record usage and error, but lack a quality score (e.g., user feedback) to optimize routing based on response quality.
 - **Missing Budget-aware Router**: Usage is recorded but not yet used by the Router to enforce budget caps dynamically.
+
+### Sprint 21A
+- **Persistent Storage for Budgets**: `BudgetManager` relies on in-memory counters. A multi-worker environment will have split-brain budget tracking. Need Redis.
+- **Exact Pre-computation**: Router checks budget against a static `capability.cost` rather than calculating exact predicted tokens for the prompt, which is hard to do synchronously before model choice.
+
+### Sprint 21B
+- **Budget Validation**: Hiện chủ yếu bằng smoke script, chưa có dashboard trực quan cho người dùng.
+- **Budget State**: Chưa có persistent multi-instance budget state (cần Redis).
+- **Quality Score**: Chưa có quality score/user feedback cho budget routing.
+- **Price Refresh**: Chưa có automatic price refresh cho các model.

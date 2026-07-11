@@ -52,3 +52,21 @@ def test_budget_manager_budget_checks():
     # In emergency mode, max_estimated_cost_per_request still applies
     policy.mode = "emergency"
     assert mgr.check_budget_for_request(10.0) == False
+
+def test_budget_policy_env_loading(monkeypatch):
+    monkeypatch.setenv("AI_GATEWAY_BUDGET_MODE", "economy")
+    monkeypatch.setenv("AI_GATEWAY_DAILY_BUDGET_USD", "2.5")
+    monkeypatch.setenv("AI_GATEWAY_MONTHLY_BUDGET_USD", "30")
+    monkeypatch.setenv("AI_GATEWAY_MAX_COST_PER_REQUEST", "0.1")
+    
+    policy = BudgetPolicy()
+    assert policy.mode == "economy"
+    assert policy.daily_budget_usd == 2.5
+    assert policy.monthly_budget_usd == 30.0
+    assert policy.max_estimated_cost_per_request == 0.1
+
+def test_budget_policy_invalid_env(monkeypatch):
+    monkeypatch.setenv("AI_GATEWAY_DAILY_BUDGET_USD", "invalid_number")
+    # Should not crash, should just default to None
+    policy = BudgetPolicy()
+    assert policy.daily_budget_usd is None

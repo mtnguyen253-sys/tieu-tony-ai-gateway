@@ -1,6 +1,7 @@
 import sys
 import json
 import argparse
+import os
 from collections import defaultdict
 
 def main():
@@ -86,6 +87,15 @@ def main():
         print(f"{k}: {v}")
         
     print("\n--- Insights & Recommendations ---")
+    
+    daily_budget = float(os.getenv("AI_GATEWAY_DAILY_BUDGET_USD", "0"))
+    if daily_budget > 0 and total_cost > daily_budget * 0.8:
+        print(f"[WARNING] Total cost (${total_cost:.6f}) exceeds 80% of daily budget (${daily_budget:.6f}).")
+
+    for k, v in cost_by_model.items():
+        if total_cost > 0 and v / total_cost > 0.7:
+            print(f"[WARNING] Provider/Model {k} accounts for >70% of total cost ({v:.6f}/{total_cost:.6f}).")
+
     if total_cost > 10.0:
         print("[WARNING] Total cost exceeds $10.0. Consider budget alerts.")
     if error_count > 0 and error_count / max(1, total_requests) > 0.3:
