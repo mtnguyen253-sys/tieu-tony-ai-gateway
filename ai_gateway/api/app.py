@@ -22,6 +22,7 @@ from ai_gateway.core.circuit_breaker import CircuitBreaker
 from ai_gateway.core.cooldown import ProviderCooldownManager
 from ai_gateway.core.fallback import ProviderFallbackStrategy
 from ai_gateway.core.retry import NoRetryStrategy
+from ai_gateway.config.settings import settings
 from ai_gateway.core.executor import ExecutionEngine, AuthenticationException, RateLimitException, TimeoutException
 
 
@@ -54,7 +55,6 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             retry_strategy=retry_strategy,
             fallback_strategy=fallback_strategy
         )
-
     @app.get("/health")
     @app.get("/v1/health")
     async def health_check():
@@ -62,9 +62,10 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         return {
             "status": "ok",
             "service": "ai_gateway",
-            "version": "0.1.0"
+            "version": "0.1.0",
+            "provider_configured": bool(settings.openrouter_api_key),
+            "budget_mode": settings.budget_mode
         }
-
     @app.get("/models")
     @app.get("/v1/models")
     async def list_models():

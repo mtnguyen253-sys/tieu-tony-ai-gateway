@@ -1,180 +1,54 @@
-# Hướng dẫn chạy Local (Tiểu Tony AI Gateway)
+# Hướng Dẫn Chạy Local (Tiểu Tony AI Gateway)
 
-Tài liệu này hướng dẫn cách chạy và test AI Gateway ở môi trường local.
+Hướng dẫn này giúp bạn thiết lập và chạy AI Gateway trên máy local (ưu tiên môi trường Windows/PowerShell).
 
-## 1. Môi trường (Virtual Environment)
-
-Tạo virtual environment:
+## 1. Clone repo
 ```powershell
-python -m venv venv
+git clone <repository_url>
+cd tieu-tony-ai-gateway
 ```
 
-Activate venv (trên Windows PowerShell):
+## 2. Tạo Virtual Environment
 ```powershell
-.\venv\Scripts\Activate.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-## 2. Cài đặt Dependencies
-
-Cài đặt các gói cần thiết:
+## 3. Cài đặt Dependencies
 ```powershell
-pip install fastapi uvicorn pydantic httpx pytest
+python -m pip install -r requirements-dev.txt
 ```
 
-## 3. Cấu hình Environment Variables (Provider thật)
-
-Gateway hỗ trợ OpenRouter làm provider đầu tiên. Để cấu hình, bạn có thể tạo file `.env` ở thư mục gốc hoặc set trực tiếp trong PowerShell.
-
-Set biến môi trường qua PowerShell:
+## 4. Cấu hình môi trường (.env)
+Copy file `.env.example` thành `.env` và điền API key thực tế nếu cần:
 ```powershell
-$env:OPENROUTER_API_KEY="sk-or-v1-..."
-$env:OPENROUTER_MODEL="openai/gpt-3.5-turbo"
+copy .env.example .env
+```
+Mở file `.env` và cập nhật `OPENROUTER_API_KEY`.
+
+(Tuỳ chọn) Chạy script kiểm tra môi trường:
+```powershell
+.\scripts\check_env.ps1
 ```
 
-
-## 4. Cấu hình Budget-aware Routing
-AI Gateway hỗ trợ kiểm soát ngân sách thông qua các biến môi trường:
-
+## 5. Chạy Gateway
+Bạn có thể chạy bằng script có sẵn (sẽ tự động active venv và fallback `.env.example` nếu chưa tạo `.env`):
 ```powershell
-$env:AI_GATEWAY_BUDGET_MODE="normal"
-$env:AI_GATEWAY_DAILY_BUDGET_USD="1.0"
-$env:AI_GATEWAY_MONTHLY_BUDGET_USD="30.0"
-$env:AI_GATEWAY_MAX_COST_PER_REQUEST="0.05"
+.\scripts\run_local.ps1 -Reload
 ```
-
-**Giải thích các Budget Mode:**
-- **`normal`**: Cân bằng giữa cost, latency và quality.
-- **`economy`**: Ưu tiên tiết kiệm chi phí, ưu tiên chọn provider/model rẻ hơn.
-- **`emergency`**: Siết chi phí mạnh nhất. Đây là chế độ cạn kiệt ngân sách (cost-saving emergency), không phải là performance mode. Emergency mode sẽ ưu tiên tối đa model rẻ/free và **không được bypass budget limit** để tránh chọn model đắt tiền chỉ vì quality cao.
-
-## 5. Chạy Test Suite
-
-Để đảm bảo hệ thống an toàn và code không bị break, chạy full test suite:
-```powershell
-python -m pytest ai_gateway/tests -v
-```
-
-## 6. Chạy Server
-
-### 6.1. Production / Default Runtime
-Chạy với cấu hình mặc định (sẽ sử dụng provider thật nếu có API Key, nếu không sẽ trả 503):
+Hoặc chạy trực tiếp qua Uvicorn:
 ```powershell
 python -m uvicorn ai_gateway.api.app:app --reload
 ```
 
-### 6.2. Dev / Mock Runtime
-Chạy với cấu hình mock orchestrator (luôn trả về 200 cho mục đích test integration, không cần API Key):
+## 6. Kiểm tra Health & Models
 ```powershell
-python -m uvicorn ai_gateway.api.dev:app --reload
-```
-
-## 7. Chạy Smoke Script
-
-Khi server đang chạy, mở một terminal khác và gọi smoke script tương ứng:
-
-### 7.1. Test Mock Runtime
-(Yêu cầu server chạy qua `ai_gateway.api.dev:app`)
-```powershell
-python examples/smoke_chat_completion.py
-```
-**Kỳ vọng:**
-- Status Code: 200
-- Assistant Response: "Hello from Mock Orchestrator! This is a simulated response."
-
-### 7.2. Test Default Runtime (Chưa cấu hình API Key)
-(Yêu cầu server chạy qua `ai_gateway.api.app:app` và không set OPENROUTER_API_KEY)
-```powershell
-python examples/smoke_real_provider.py
-```
-**Kỳ vọng:**
-- Status Code: 503
-- Báo lỗi Provider Unavailable.
-
-### 7.3. Test Default Runtime (Có cấu hình API Key)
-(Yêu cầu server chạy qua `ai_gateway.api.app:app` và đã set OPENROUTER_API_KEY)
-```powershell
-python examples/smoke_real_provider.py
-```
-**Kỳ vọng:**
-- Status Code: 200
-- Assistant Response: Câu trả lời thực tế từ mô hình AI (OpenRouter).
-
-
-### 7.4. Test Runtime với Real Provider (Budget Mode)
-Terminal 1:
-```powershell
-$env:OPENROUTER_API_KEY="..."
-$env:OPENROUTER_MODEL="qwen/qwen-plus"
-$env:AI_GATEWAY_BUDGET_MODE="economy"
-python -m uvicorn ai_gateway.api.app:app --reload
-```
-Terminal 2:
-```powershell
-python examples/smoke_real_provider.py
-python -m ai_gateway.tools.usage_summary logs\\usage.jsonl
-```
-## 8. Dừng Server
-Tại terminal đang chạy Uvicorn, nhấn `Ctrl + C` để dừng server.
-
-### 7.5. Test Streaming Runtime (Có cấu hình API Key)
-
-(Yêu cầu server chạy qua `ai_gateway.api.app:app` và đã set OPENROUTER_API_KEY)
-
-Terminal 1:
-```powershell
-$env:OPENROUTER_API_KEY="..."
-$env:OPENROUTER_MODEL="qwen/qwen3.6-plus"
-python -m uvicorn ai_gateway.api.app:app --reload
-```
-
-Terminal 2:
-```powershell
-python examples/smoke_streaming.py
-```
-
-**Kỳ vọng:**
-- Server kết nối OpenRouter.
-- Nội dung trả về dưới dạng từng chunk một in ra console.
-- Nhận được dòng `[DONE]` và thông tin `usage` (nếu provider hỗ trợ).
-
-Nếu bạn muốn test bằng `curl`:
-```powershell
-@'
-{
-  "model": "qwen/qwen3.6-plus",
-  "messages": [
-    {"role": "user", "content": "Say hello in Vietnamese"}
-  ],
-  "stream": true
-}
-'@ | Set-Content -Encoding UTF8 stream_body.json
-
-curl.exe -N -X POST http://127.0.0.1:8000/chat/completions `
-  -H "Content-Type: application/json" `
-  --data-binary "@stream_body.json"
-```
-
-## 9. Testing OpenAI SDK Compatibility
-Gateway hỗ trợ OpenAI Python SDK tương thích hoàn toàn.
-Run gateway:
-```powershell
-$env:OPENROUTER_API_KEY="..."
-$env:OPENROUTER_MODEL="qwen/qwen3.6-plus"
-python -m uvicorn ai_gateway.api.app:app --reload
-```
-
-Test OpenAI SDK:
-```powershell
-python -m pip install openai
-$env:AI_GATEWAY_BASE_URL="http://127.0.0.1:8000/v1"
-$env:AI_GATEWAY_API_KEY="dummy"
-$env:AI_GATEWAY_MODEL="qwen/qwen3.6-plus"
-python examples/smoke_openai_sdk.py
-```
-
-Curl compatibility:
-```powershell
+curl http://127.0.0.1:8000/v1/health
 curl http://127.0.0.1:8000/v1/models
+```
+
+## 7. Test Non-streaming Request
+```powershell
 @'
 {
   "model": "qwen/qwen3.6-plus",
@@ -189,7 +63,7 @@ curl.exe -X POST http://127.0.0.1:8000/v1/chat/completions `
   --data-binary "@body.json"
 ```
 
-Streaming:
+## 8. Test Streaming Request
 ```powershell
 @'
 {
@@ -204,4 +78,17 @@ Streaming:
 curl.exe -N -X POST http://127.0.0.1:8000/v1/chat/completions `
   -H "Content-Type: application/json" `
   --data-binary "@stream_body.json"
+```
+
+## 9. Test OpenAI SDK
+Chạy script smoke test bằng Python (đảm bảo package `openai` đã được cài):
+```powershell
+python examples/smoke_openai_sdk.py
+```
+*(Hoặc script stream raw `python examples/smoke_streaming.py`)*
+
+## 10. Chạy Unit Tests
+Chạy toàn bộ bộ test để đảm bảo không bị regression:
+```powershell
+python -m pytest ai_gateway/tests -v
 ```

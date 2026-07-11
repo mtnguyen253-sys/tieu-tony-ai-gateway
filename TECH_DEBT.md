@@ -128,3 +128,10 @@
 - **Tool calls streaming compatibility chưa hoàn thiện**: Nếu hỗ trợ tool calling/functions, cần thêm logic map format cho SDK.
 - **Mid-stream fallback chưa hỗ trợ**: Nhắc lại tech debt cũ, vẫn chưa fallback giữa dòng.
 - **Một số SDK có thể yêu cầu header/response edge cases khác**: Cần test kỹ hơn cho production cases (VD prompt caching header).
+
+### Sprint 24 - Packaging / Deployment / Config Profiles
+- **Chưa có Dockerfile**: Để thuận tiện deploy production, cần có `Dockerfile` và `docker-compose.yml`.
+- **Chưa có systemd/service install**: Cho việc deploy native trên VPS.
+- **Chưa có auth/API key middleware**: `/chat/completions` vẫn không validate client API key.
+- **Chưa có production logging/observability chuẩn**: Log level đang được parse ở config nhưng chưa đưa vào root logger chuẩn (như Loguru hay structlog).
+- **Chưa có Redis/shared state**: Rate limiting, cooldown, budget mode hiện tại hoàn toàn in-memory, không chạy đa tiến trình được an toàn.
