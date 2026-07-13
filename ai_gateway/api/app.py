@@ -22,25 +22,61 @@ from ai_gateway.core.circuit_breaker import CircuitBreaker
 from ai_gateway.core.cooldown import ProviderCooldownManager
 from ai_gateway.core.fallback import ProviderFallbackStrategy
 from ai_gateway.core.retry import NoRetryStrategy
-from ai_gateway.config.settings import settings
 from ai_gateway.core.executor import ExecutionEngine, AuthenticationException, RateLimitException, TimeoutException
 
 
-def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None) -> FastAPI:
+def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None) -> FastAPI:
+    if app_settings is None:
+        from ai_gateway.config.settings import settings as default_settings
+        app_settings = default_settings
     app = FastAPI(title="Tiểu Tony AI Gateway", version="0.1.0")
 
     # Initialize core components if not provided
     if registry is None:
         registry = CapabilityRegistry()
-        # Load provider from environment if available
-        import os
-        openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-        if openrouter_api_key:
+        
+        # OpenRouter fallback config
+        if app_settings.openrouter_api_key:
             from ai_gateway.adapters.openrouter import OpenRouterAdapter
-            openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
-            provider = OpenRouterAdapter(api_key=openrouter_api_key, default_model=openrouter_model)
+            openrouter_model = app_settings.openrouter_model
+            provider = OpenRouterAdapter(api_key=app_settings.openrouter_api_key, default_model=openrouter_model)
             registry.register("openrouter", provider)
-    
+            
+        # Register generic providers
+        from ai_gateway.adapters.openai_compatible import GenericOpenAICompatibleAdapter
+        from ai_gateway.config.model_prices import MODEL_PRICES
+        
+        import logging
+        logger = logging.getLogger(__name__)
+
+        for p_config in app_settings.providers:
+            if not p_config.enabled:
+                continue
+            
+            try:
+                adapter = GenericOpenAICompatibleAdapter(
+                    name=p_config.name,
+                    base_url=p_config.base_url,
+                    api_key=p_config.api_key,
+                    model=p_config.model,
+                    supports_streaming=p_config.supports_streaming,
+                    enabled=p_config.enabled,
+                    cost_input_per_million=p_config.cost_input_per_million or 0.0,
+                    cost_output_per_million=p_config.cost_output_per_million or 0.0
+                )
+                registry.register(p_config.name, adapter)
+                
+                # Register cost
+                key = f"{p_config.name}:{p_config.model}"
+                MODEL_PRICES[key] = {
+                    "input_per_million": p_config.cost_input_per_million or 0.0,
+                    "output_per_million": p_config.cost_output_per_million or 0.0,
+                    "cached_input_per_million": p_config.cost_cached_input_per_million or p_config.cost_input_per_million or 0.0,
+                    "currency": "USD"
+                }
+            except Exception as e:
+                logger.warning(f"Failed to register provider {p_config.name}: {e}")
+
     if orchestrator is None:
         cooldown_manager = ProviderCooldownManager()
         circuit_breaker = CircuitBreaker()
@@ -63,37 +99,29 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             "status": "ok",
             "service": "ai_gateway",
             "version": "0.1.0",
-            "provider_configured": bool(settings.openrouter_api_key),
-            "budget_mode": settings.budget_mode
+            "provider_configured": bool(app_settings.openrouter_api_key),
+            "budget_mode": app_settings.budget_mode
         }
     @app.get("/models")
     @app.get("/v1/models")
     async def list_models():
         """Returns available models in OpenAI-compatible format."""
-        providers = list(registry.all().keys()) if hasattr(registry, 'all') else []
+        providers = registry.all() if hasattr(registry, 'all') else {}
         
-        if not providers:
-            return {
-                "object": "list",
-                "data": []
-            }
-            
         data = []
-        if "openrouter" in providers:
-            # If OpenRouter is registered, expose models
-            openrouter_model = os.getenv("OPENROUTER_MODEL", "openai/gpt-3.5-turbo")
-            data.append({
-                "id": openrouter_model,
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": "openrouter"
-            })
-        
+        for p_name, p_instance in providers.items():
+            if hasattr(p_instance, "default_model"):
+                data.append({
+                    "id": p_instance.default_model,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": p_name
+                })
+                
         return {
             "object": "list",
             "data": data
         }
-
     @app.post("/chat/completions", response_model=ChatCompletionResponse)
     @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
     async def chat_completions(req: ChatCompletionRequest):
