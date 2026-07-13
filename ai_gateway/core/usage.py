@@ -18,6 +18,9 @@ class UsageEvent(BaseModel):
     output_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
     estimated_cost: Optional[float] = None
+    input_cost: Optional[float] = None
+    cached_input_cost: Optional[float] = None
+    output_cost: Optional[float] = None
     latency_ms: Optional[float] = None
     status: str
     error_type: Optional[str] = None

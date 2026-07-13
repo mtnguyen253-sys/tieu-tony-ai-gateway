@@ -20,15 +20,34 @@ python -m pip install -r requirements-dev.txt
 ```
 
 ## 4. Cấu hình môi trường (.env)
+
+Bạn có thể cấu hình provider theo 2 cách:
+
+### Legacy OpenRouter config
+```env
+OPENROUTER_API_KEY=...
+OPENROUTER_MODEL=qwen/qwen3.6-plus
+```
+
+### Generic provider config
+```env
+AI_GATEWAY_PROVIDER_1_NAME=cliproxy
+AI_GATEWAY_PROVIDER_1_BASE_URL=http://127.0.0.1:8317/v1
+AI_GATEWAY_PROVIDER_1_API_KEY=dummy
+AI_GATEWAY_PROVIDER_1_MODEL=DeepSeek-V4-Pro
+AI_GATEWAY_PROVIDER_1_ENABLED=true
+AI_GATEWAY_PROVIDER_1_SUPPORTS_STREAMING=true
+
+AI_GATEWAY_PROVIDER_2_NAME=together
+AI_GATEWAY_PROVIDER_2_BASE_URL=https://api.together.xyz/v1
+AI_GATEWAY_PROVIDER_2_API_KEY=your_together_key_here
+AI_GATEWAY_PROVIDER_2_MODEL=deepseek-ai/DeepSeek-V4-Pro
+AI_GATEWAY_PROVIDER_2_ENABLED=true
+```
+
 Copy file `.env.example` thành `.env` và điền API key thực tế nếu cần:
 ```powershell
 copy .env.example .env
-```
-Mở file `.env` và cập nhật `OPENROUTER_API_KEY`.
-
-(Tuỳ chọn) Chạy script kiểm tra môi trường:
-```powershell
-.\scripts\check_env.ps1
 ```
 
 ## 5. Chạy Gateway
@@ -92,3 +111,26 @@ Chạy toàn bộ bộ test để đảm bảo không bị regression:
 ```powershell
 python -m pytest ai_gateway/tests -v
 ```
+
+### Token Economics Report
+Tiểu Tony automatically logs usage events (requests, tokens, latency, cost) to `logs/usage.jsonl`.
+You can view a detailed token economics report to analyze your costs and performance.
+
+Run the summary tool:
+```bash
+python -m ai_gateway.tools.usage_summary logs/usage.jsonl
+```
+
+For JSON output:
+```bash
+python -m ai_gateway.tools.usage_summary logs/usage.jsonl --json
+```
+
+**How to read the report:**
+- **Cache Ratio**: High cache ratio (>70%) means your prompts are effectively reusing cached tokens (good for long-context workloads). If it is low, consider optimizing your prompts or enabling cache-aware routing.
+- **Cost Breakdown**: Shows input, cached input, and output token costs separately (if supported by the provider configuration).
+- **Insights & Warnings**: The tool automatically warns you if:
+  - A single model accounts for >70% of total cost.
+  - A provider has a high rate-limit frequency.
+  - Your requests are unusually output-heavy.
+  - Unknown pricing configurations are heavily utilized.

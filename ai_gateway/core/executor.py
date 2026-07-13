@@ -107,7 +107,7 @@ class ExecutionEngine:
                     resolved_model = response.model
                     
                 if self.cost_estimator:
-                    estimated_cost = self.cost_estimator.estimate(
+                    cost_details = self.cost_estimator.estimate_detailed(
                         provider=provider_name,
                         model=resolved_model,
                         input_tokens=input_tokens,
@@ -154,7 +154,7 @@ class ExecutionEngine:
                     resolved_model = response.model
                 
                 if self.cost_estimator:
-                    estimated_cost = self.cost_estimator.estimate(
+                    cost_details = self.cost_estimator.estimate_detailed(
                         provider=provider_name,
                         model=resolved_model,
                         input_tokens=input_tokens,
@@ -172,7 +172,10 @@ class ExecutionEngine:
                 cached_input_tokens=cached_input_tokens,
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
-                estimated_cost=estimated_cost,
+                estimated_cost=cost_details.get("total_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                input_cost=cost_details.get("input_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                cached_input_cost=cost_details.get("cached_input_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                output_cost=cost_details.get("output_cost", 0.0) if 'cost_details' in locals() else 0.0,
                 latency_ms=latency_ms,
                 status=status,
                 error_type=error_type,
@@ -263,7 +266,7 @@ class ExecutionEngine:
         self.logger.info(f"Executing stream request {request.request_id} with provider {provider_name}")
         start_time = time.time()
         
-        def _record_usage(status, error_type=None, error_code=None, cooldown_triggered=False, latency_ms=None, input_tokens=None, output_tokens=None, total_tokens=None, model=None, estimated_cost=None):
+        def _record_usage(status, error_type=None, error_code=None, cooldown_triggered=False, latency_ms=None, input_tokens=None, output_tokens=None, total_tokens=None, model=None, estimated_cost=None, input_cost=None, cached_input_cost=None, output_cost=None):
             if self.budget_manager:
                 if status == "success":
                     self.budget_manager.record_success(
@@ -294,7 +297,10 @@ class ExecutionEngine:
                 cached_input_tokens=None,
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
-                estimated_cost=estimated_cost,
+                estimated_cost=cost_details.get("total_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                input_cost=cost_details.get("input_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                cached_input_cost=cost_details.get("cached_input_cost", 0.0) if 'cost_details' in locals() else 0.0,
+                output_cost=cost_details.get("output_cost", 0.0) if 'cost_details' in locals() else 0.0,
                 latency_ms=latency_ms,
                 status=status,
                 error_type=error_type,
@@ -334,13 +340,19 @@ class ExecutionEngine:
                         output_tokens = last_usage.get("completion_tokens")
                         total_tokens = last_usage.get("total_tokens")
                         if self.cost_estimator:
-                            estimated_cost = self.cost_estimator.estimate(
+                            cost_details = self.cost_estimator.estimate_detailed(
                                 provider=provider_name,
                                 model=model or getattr(provider, 'default_model', None),
                                 input_tokens=input_tokens,
                                 output_tokens=output_tokens
                             )
-                    _record_usage(status="success", latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens, model=model, estimated_cost=estimated_cost)
+                    c_total, c_in, c_cin, c_out = 0.0, 0.0, 0.0, 0.0
+                    if 'cost_details' in locals():
+                        c_total = cost_details.get("total_cost", 0.0)
+                        c_in = cost_details.get("input_cost", 0.0)
+                        c_cin = cost_details.get("cached_input_cost", 0.0)
+                        c_out = cost_details.get("output_cost", 0.0)
+                    _record_usage(status="success", latency_ms=latency_ms, input_tokens=input_tokens, output_tokens=output_tokens, total_tokens=total_tokens, model=model, estimated_cost=c_total, input_cost=c_in, cached_input_cost=c_cin, output_cost=c_out)
                 except Exception as e:
                     execution_time = time.time() - start_time
                     latency_ms = execution_time * 1000
