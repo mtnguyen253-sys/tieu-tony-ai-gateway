@@ -112,25 +112,26 @@ Chạy toàn bộ bộ test để đảm bảo không bị regression:
 python -m pytest ai_gateway/tests -v
 ```
 
-### Token Economics Report
-Tiểu Tony automatically logs usage events (requests, tokens, latency, cost) to `logs/usage.jsonl`.
-You can view a detailed token economics report to analyze your costs and performance.
+## 11. Cache-aware Routing
+AI Gateway hỗ trợ định tuyến thông minh dựa trên khả năng cache prompt (prompt caching) của provider. Nếu workload của bạn yêu cầu nhiều context (long-context) hoặc bạn ưu tiên sử dụng cache, router sẽ ưu tiên các provider có metadata cache-capable.
 
-Run the summary tool:
+### Cấu hình Provider hỗ trợ Cache:
+Trong file `.env`, bạn có thể thêm các field sau cho một provider:
+```env
+AI_GATEWAY_PROVIDER_1_SUPPORTS_PROMPT_CACHE=true
+AI_GATEWAY_PROVIDER_1_CACHE_READ_COST_PER_MILLION=0.1
+AI_GATEWAY_PROVIDER_1_CACHE_WRITE_COST_PER_MILLION=0.5
+AI_GATEWAY_PROVIDER_1_CACHE_PRIORITY=1.2
+```
+
+### Cách sử dụng:
+Khi gửi request, bạn có thể truyền hints trong context để kích hoạt routing cache-aware:
+- `cache_preferred=true`
+- `long_context=true`
+
+### Xem báo cáo Cache Ratio:
+Xem báo cáo Usage Economics để theo dõi Cache Ratio của các provider:
 ```bash
 python -m ai_gateway.tools.usage_summary logs/usage.jsonl
 ```
-
-For JSON output:
-```bash
-python -m ai_gateway.tools.usage_summary logs/usage.jsonl --json
-```
-
-**How to read the report:**
-- **Cache Ratio**: High cache ratio (>70%) means your prompts are effectively reusing cached tokens (good for long-context workloads). If it is low, consider optimizing your prompts or enabling cache-aware routing.
-- **Cost Breakdown**: Shows input, cached input, and output token costs separately (if supported by the provider configuration).
-- **Insights & Warnings**: The tool automatically warns you if:
-  - A single model accounts for >70% of total cost.
-  - A provider has a high rate-limit frequency.
-  - Your requests are unusually output-heavy.
-  - Unknown pricing configurations are heavily utilized.
+Nếu Cache Ratio thấp, cân nhắc chọn các provider có `supports_prompt_cache=true`.

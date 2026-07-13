@@ -26,6 +26,8 @@ class ProviderCapability(BaseModel):
     latency: float = 0.0
     cost: float = 0.0
     quota_weight: float = 1.0
+    supports_prompt_cache: bool = False
+    cache_read_cost: float = 0.0
 
 class TaskRequirement(BaseModel):
     task_type: TaskType = TaskType.GENERAL
@@ -34,6 +36,8 @@ class TaskRequirement(BaseModel):
     priority: int = 1
     budget: float = 100.0
     latency_requirement: float = 10000.0
+    long_context: bool = False
+    cache_preferred: bool = False
 
 class CapabilityRegistry:
     def __init__(self):
@@ -52,7 +56,9 @@ class CapabilityRegistry:
             tool_call=raw_caps.get("tool_call", False),
             latency=raw_caps.get("latency", 0.0),
             cost=raw_caps.get("cost", 0.0),
-            quota_weight=raw_caps.get("quota_weight", 1.0)
+            quota_weight=raw_caps.get("quota_weight", 1.0),
+            supports_prompt_cache=raw_caps.get("supports_prompt_cache", False),
+            cache_read_cost=raw_caps.get("cache_read_cost", 0.0)
         )
 
     def unregister(self, name: str) -> None:
@@ -137,12 +143,21 @@ class ScoringEngine:
 
         # Quota score
         quota_score = min(10.0, quota * capability.quota_weight)
+        
+        # Cache bonus/penalty
+        cache_bonus = 0.0
+        if (requirement.long_context or requirement.cache_preferred):
+            if capability.supports_prompt_cache:
+                cache_bonus = 2.0
+            else:
+                cache_bonus = -0.5
 
         final_score = (
             quality_score * weights["quality"] +
             cost_score * weights["cost"] +
             latency_score * weights["latency"] +
-            quota_score * weights["quota"]
+            quota_score * weights["quota"] +
+            cache_bonus
         )
         final_score = max(0.0, final_score - penalty)
         return final_score

@@ -120,7 +120,7 @@
 - **Thiếu Usage Trong Streaming**: Một số provider khi streaming không trả về metadata usage (token counts). UsageLedger đang được handle an toàn (record `None`) nhưng điều này làm giảm độ chính xác của cost tracking nếu provider không hỗ trợ tuỳ chọn "include_usage".
 - **Streaming Retry Chỉ Áp Dụng Trước Khi Bắt Đầu**: `RetryStrategy` và `FallbackStrategy` chỉ catch được lỗi kết nối ban đầu, không áp dụng cho lỗi bị đứt gãy giữa chừng.
 - **Streaming Tool Calls Chưa Hoàn Thiện**: Streaming hiện tại chỉ parse chunk text cơ bản, chưa hỗ trợ đầy đủ các delta của function/tool calls nếu có.
-- **SSE Client Compatibility**: Cần test thêm với các client chuẩn (OpenAI SDK, Codex, OpenClaw) để đảm bảo không có vấn đề tương thích về timing hoặc format chunk.
+- **SSE Client Compatibility**: Cần test thêm với các client chuẩn (OpenAI SDK, Codex, OpenClaw) để đảm bảo không có vấn thích tương thích về timing hoặc format chunk.
 
 ### Sprint 23 - OpenAI SDK Compatibility
 - **Chưa có auth/API key validation nội bộ**: Các request được gửi từ OpenAI SDK vẫn chưa được auth (API key validation ở phía Gateway) mà chỉ bypass.
@@ -135,3 +135,10 @@
 - **Chưa có auth/API key middleware**: `/chat/completions` vẫn không validate client API key.
 - **Chưa có production logging/observability chuẩn**: Log level đang được parse ở config nhưng chưa đưa vào root logger chuẩn (như Loguru hay structlog).
 - **Chưa có Redis/shared state**: Rate limiting, cooldown, budget mode hiện tại hoàn toàn in-memory, không chạy đa tiến trình được an toàn.
+
+### Sprint 28
+- Chưa có dynamic learning từ historical cache ratio.
+- Chưa có provider-specific prompt cache API.
+- Chưa có persistent analytics DB.
+- Chưa có tokenizer chính xác.
+- Chưa có cache write/read separation đầy đủ cho từng provider.

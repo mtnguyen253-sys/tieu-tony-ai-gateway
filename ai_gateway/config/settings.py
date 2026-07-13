@@ -28,6 +28,10 @@ class ProviderProfile:
     cost_input_per_million: Optional[float] = None
     cost_cached_input_per_million: Optional[float] = None
     cost_output_per_million: Optional[float] = None
+    supports_prompt_cache: bool = False
+    cache_read_cost_per_million: Optional[float] = None
+    cache_write_cost_per_million: Optional[float] = None
+    cache_priority: float = 1.0
     keys: List[ProviderKeyProfile] = field(default_factory=list)
 
 
@@ -111,6 +115,10 @@ class Settings:
             cost_input = _parse_float(data.get("cost_input_per_million", ""))
             cost_cached_input = _parse_float(data.get("cost_cached_input_per_million", ""))
             cost_output = _parse_float(data.get("cost_output_per_million", ""))
+            supports_prompt_cache = _parse_bool(data.get("supports_prompt_cache", ""), False)
+            cache_read_cost = _parse_float(data.get("cache_read_cost_per_million", ""))
+            cache_write_cost = _parse_float(data.get("cache_write_cost_per_million", ""))
+            cache_priority = _parse_float(data.get("cache_priority", ""), 1.0)
             
             keys = []
             for kid, kdata in data.get("keys", {}).items():
@@ -142,6 +150,10 @@ class Settings:
                 cost_input_per_million=cost_input,
                 cost_cached_input_per_million=cost_cached_input,
                 cost_output_per_million=cost_output,
+                supports_prompt_cache=supports_prompt_cache,
+                cache_read_cost_per_million=cache_read_cost,
+                cache_write_cost_per_million=cache_write_cost,
+                cache_priority=cache_priority,
                 keys=keys
             ))
             
