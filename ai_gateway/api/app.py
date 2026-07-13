@@ -16,6 +16,8 @@ from .schemas import (
 
 from ai_gateway.protocols.cap import AgentRequest, AgentResponse
 from ai_gateway.core.orchestrator import ExecutionOrchestrator
+from ai_gateway.core.quota import InMemoryQuotaTracker
+from ai_gateway.core.key_pool import KeyPool
 from ai_gateway.registry.capability import CapabilityRegistry
 from ai_gateway.core.router import PolicyRouter, NoProviderAvailableException
 from ai_gateway.core.circuit_breaker import CircuitBreaker
@@ -25,20 +27,26 @@ from ai_gateway.core.retry import NoRetryStrategy
 from ai_gateway.core.executor import ExecutionEngine, AuthenticationException, RateLimitException, TimeoutException
 
 
-def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None) -> FastAPI:
+def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None, quota_tracker: Optional[InMemoryQuotaTracker] = None) -> FastAPI:
     if app_settings is None:
         from ai_gateway.config.settings import settings as default_settings
         app_settings = default_settings
     app = FastAPI(title="Tiểu Tony AI Gateway", version="0.1.0")
 
     # Initialize core components if not provided
+    if quota_tracker is None:
+        quota_tracker = InMemoryQuotaTracker()
+
     if registry is None:
         registry = CapabilityRegistry()
+        cooldown_manager = ProviderCooldownManager()
         
         # OpenRouter fallback config
         if app_settings.openrouter_api_key:
             from ai_gateway.adapters.openrouter import OpenRouterAdapter
             openrouter_model = app_settings.openrouter_model
+            from ai_gateway.config.settings import ProviderKeyProfile
+            # For openrouter legacy we can wrap it in a keypool if needed or just let it use api_key. We'll use api_key for simplicity.
             provider = OpenRouterAdapter(api_key=app_settings.openrouter_api_key, default_model=openrouter_model)
             registry.register("openrouter", provider)
             
@@ -54,6 +62,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                 continue
             
             try:
+                key_pool = KeyPool(p_config.name, p_config.keys, quota_tracker, cooldown_manager) if p_config.keys else None
                 adapter = GenericOpenAICompatibleAdapter(
                     name=p_config.name,
                     base_url=p_config.base_url,
@@ -62,7 +71,8 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                     supports_streaming=p_config.supports_streaming,
                     enabled=p_config.enabled,
                     cost_input_per_million=p_config.cost_input_per_million or 0.0,
-                    cost_output_per_million=p_config.cost_output_per_million or 0.0
+                    cost_output_per_million=p_config.cost_output_per_million or 0.0,
+                    key_pool=key_pool
                 )
                 registry.register(p_config.name, adapter)
                 
@@ -78,12 +88,12 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                 logger.warning(f"Failed to register provider {p_config.name}: {e}")
 
     if orchestrator is None:
-        cooldown_manager = ProviderCooldownManager()
+        cooldown_manager = cooldown_manager or ProviderCooldownManager()
         circuit_breaker = CircuitBreaker()
         router = PolicyRouter(registry, circuit_breaker=circuit_breaker, cooldown_manager=cooldown_manager)
         retry_strategy = NoRetryStrategy()
         fallback_strategy = ProviderFallbackStrategy(router)
-        executor = ExecutionEngine(circuit_breaker, cooldown_manager=cooldown_manager)
+        executor = ExecutionEngine(circuit_breaker, cooldown_manager=cooldown_manager, quota_tracker=quota_tracker)
 
         orchestrator = ExecutionOrchestrator(
             engine=executor,
@@ -95,11 +105,19 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     @app.get("/v1/health")
     async def health_check():
         """Returns service health."""
+        providers_count = len(app_settings.providers)
+        enabled_providers_count = sum(1 for p in app_settings.providers if p.enabled)
+        key_count = sum(len(p.keys) for p in app_settings.providers)
+        enabled_key_count = sum(sum(1 for k in p.keys if k.enabled) for p in app_settings.providers)
         return {
             "status": "ok",
             "service": "ai_gateway",
             "version": "0.1.0",
-            "provider_configured": bool(app_settings.openrouter_api_key),
+            "provider_configured": bool(app_settings.openrouter_api_key) or enabled_providers_count > 0,
+            "provider_count": providers_count,
+            "enabled_provider_count": enabled_providers_count,
+            "key_count": key_count,
+            "enabled_key_count": enabled_key_count,
             "budget_mode": app_settings.budget_mode
         }
     @app.get("/models")

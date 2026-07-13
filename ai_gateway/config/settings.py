@@ -6,7 +6,16 @@ try:
 except ImportError:
     pass
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+@dataclass
+class ProviderKeyProfile:
+    name: str
+    api_key: str
+    enabled: bool = True
+    daily_request_limit: Optional[int] = None
+    daily_token_limit: Optional[int] = None
+    daily_cost_limit: Optional[float] = None
 
 @dataclass
 class ProviderProfile:
@@ -19,6 +28,8 @@ class ProviderProfile:
     cost_input_per_million: Optional[float] = None
     cost_cached_input_per_million: Optional[float] = None
     cost_output_per_million: Optional[float] = None
+    keys: List[ProviderKeyProfile] = field(default_factory=list)
+
 
 def _parse_bool(val: str, default: bool) -> bool:
     if not val:
@@ -29,6 +40,14 @@ def _parse_bool(val: str, default: bool) -> bool:
     if val in ("false", "0", "no", "off"):
         return False
     return default
+
+def _parse_int(val: str, default: Optional[int] = None) -> Optional[int]:
+    if not val:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
 
 def _parse_float(val: str, default: Optional[float] = None) -> Optional[float]:
     if not val:
@@ -62,13 +81,20 @@ class Settings:
             if k.startswith("AI_GATEWAY_PROVIDER_"):
                 parts = k.split("_")
                 if len(parts) >= 5:
-                    # AI_GATEWAY_PROVIDER_{ID}_{FIELD}
+                    # AI_GATEWAY_PROVIDER_{ID}_{FIELD} or AI_GATEWAY_PROVIDER_{ID}_KEY_{KID}_{FIELD}
                     provider_id = parts[3]
-                    field = "_".join(parts[4:]).lower()
-                    
                     if provider_id not in provider_data:
-                        provider_data[provider_id] = {}
-                    provider_data[provider_id][field] = v
+                        provider_data[provider_id] = {"keys": {}}
+                    
+                    if len(parts) >= 7 and parts[4] == "KEY":
+                        key_id = parts[5]
+                        field = "_".join(parts[6:]).lower()
+                        if key_id not in provider_data[provider_id]["keys"]:
+                            provider_data[provider_id]["keys"][key_id] = {}
+                        provider_data[provider_id]["keys"][key_id][field] = v
+                    else:
+                        field = "_".join(parts[4:]).lower()
+                        provider_data[provider_id][field] = v
         
         for pid, data in provider_data.items():
             name = data.get("name")
@@ -86,6 +112,26 @@ class Settings:
             cost_cached_input = _parse_float(data.get("cost_cached_input_per_million", ""))
             cost_output = _parse_float(data.get("cost_output_per_million", ""))
             
+            keys = []
+            for kid, kdata in data.get("keys", {}).items():
+                kname = kdata.get("name")
+                kapi_key = kdata.get("api_key")
+                if not kname or not kapi_key:
+                    continue
+                kenabled = _parse_bool(kdata.get("enabled", ""), True)
+                req_limit = _parse_int(kdata.get("daily_request_limit", ""), None)
+                tok_limit = _parse_int(kdata.get("daily_token_limit", ""), None)
+                cost_limit = _parse_float(kdata.get("daily_cost_limit", ""), None)
+                
+                keys.append(ProviderKeyProfile(
+                    name=kname,
+                    api_key=kapi_key,
+                    enabled=kenabled,
+                    daily_request_limit=req_limit,
+                    daily_token_limit=tok_limit,
+                    daily_cost_limit=cost_limit
+                ))
+            
             providers.append(ProviderProfile(
                 name=name,
                 base_url=base_url,
@@ -95,7 +141,8 @@ class Settings:
                 supports_streaming=supports_streaming,
                 cost_input_per_million=cost_input,
                 cost_cached_input_per_million=cost_cached_input,
-                cost_output_per_million=cost_output
+                cost_output_per_million=cost_output,
+                keys=keys
             ))
             
         return providers
