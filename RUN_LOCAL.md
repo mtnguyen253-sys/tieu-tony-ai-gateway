@@ -60,13 +60,25 @@ Hoặc chạy trực tiếp qua Uvicorn:
 python -m uvicorn ai_gateway.api.app:app --reload
 ```
 
-## 6. Kiểm tra Health & Models
+## 6. Kiểm tra Cấu hình (Sprint 29)
+Kiểm tra cấu hình hiện tại trước khi chạy:
+```powershell
+python -m ai_gateway.tools.config_check
+```
+
+## 7. Chạy Smoke Test (Sprint 29)
+Chạy smoke test để xác thực runtime provider selection:
+```powershell
+python examples/smoke_runtime_selection.py
+```
+
+## 8. Kiểm tra Health & Models
 ```powershell
 curl http://127.0.0.1:8000/v1/health
 curl http://127.0.0.1:8000/v1/models
 ```
 
-## 7. Test Non-streaming Request
+## 9. Test Non-streaming Request
 ```powershell
 @'
 {
@@ -82,7 +94,7 @@ curl.exe -X POST http://127.0.0.1:8000/v1/chat/completions `
   --data-binary "@body.json"
 ```
 
-## 8. Test Streaming Request
+## 10. Test Streaming Request
 ```powershell
 @'
 {
@@ -99,38 +111,21 @@ curl.exe -N -X POST http://127.0.0.1:8000/v1/chat/completions `
   --data-binary "@stream_body.json"
 ```
 
-## 9. Test OpenAI SDK
+## 11. Test OpenAI SDK
 Chạy script smoke test bằng Python (đảm bảo package `openai` đã được cài):
 ```powershell
 python examples/smoke_openai_sdk.py
 ```
 *(Hoặc script stream raw `python examples/smoke_streaming.py`)*
 
-## 10. Chạy Unit Tests
+## 12. Chạy Unit Tests
 Chạy toàn bộ bộ test để đảm bảo không bị regression:
 ```powershell
 python -m pytest ai_gateway/tests -v
 ```
 
-## 11. Cache-aware Routing
-AI Gateway hỗ trợ định tuyến thông minh dựa trên khả năng cache prompt (prompt caching) của provider. Nếu workload của bạn yêu cầu nhiều context (long-context) hoặc bạn ưu tiên sử dụng cache, router sẽ ưu tiên các provider có metadata cache-capable.
-
-### Cấu hình Provider hỗ trợ Cache:
-Trong file `.env`, bạn có thể thêm các field sau cho một provider:
-```env
-AI_GATEWAY_PROVIDER_1_SUPPORTS_PROMPT_CACHE=true
-AI_GATEWAY_PROVIDER_1_CACHE_READ_COST_PER_MILLION=0.1
-AI_GATEWAY_PROVIDER_1_CACHE_WRITE_COST_PER_MILLION=0.5
-AI_GATEWAY_PROVIDER_1_CACHE_PRIORITY=1.2
-```
-
-### Cách sử dụng:
-Khi gửi request, bạn có thể truyền hints trong context để kích hoạt routing cache-aware:
-- `cache_preferred=true`
-- `long_context=true`
-
-### Xem báo cáo Cache Ratio:
-Xem báo cáo Usage Economics để theo dõi Cache Ratio của các provider:
+## 13. Usage Economics & Cache-aware Routing
+Xem báo cáo Usage Economics:
 ```bash
 python -m ai_gateway.tools.usage_summary logs/usage.jsonl
 ```

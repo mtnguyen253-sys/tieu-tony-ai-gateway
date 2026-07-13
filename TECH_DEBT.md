@@ -142,3 +142,10 @@
 - Chưa có persistent analytics DB.
 - Chưa có tokenizer chính xác.
 - Chưa có cache write/read separation đầy đủ cho từng provider.
+
+### Sprint 29
+- **Dashboard**: Chưa có dashboard runtime config.
+- **Quota**: Chưa có persistent quota state.
+- **Health**: Chưa có provider health probe định kỳ.
+- **Security**: Chưa có encrypted secret store.
+- **Routing**: Chưa có dynamic routing learning từ production usage.

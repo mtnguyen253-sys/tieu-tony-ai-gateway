@@ -1,10 +1,5 @@
 import os
 from typing import List, Dict, Optional
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
 
 from dataclasses import dataclass, field
 
@@ -62,22 +57,45 @@ def _parse_float(val: str, default: Optional[float] = None) -> Optional[float]:
         return default
 
 class Settings:
-    def __init__(self):
-        self.host = os.getenv("AI_GATEWAY_HOST", "127.0.0.1")
-        self.port = int(os.getenv("AI_GATEWAY_PORT", "8000"))
-        self.log_level = os.getenv("AI_GATEWAY_LOG_LEVEL", "info")
-        self.budget_mode = os.getenv("AI_GATEWAY_BUDGET_MODE", "normal")
+    def __init__(self, env: Optional[Dict[str, str]] = None, load_dotenv_file: bool = True):
+        if env is None and load_dotenv_file:
+            try:
+                from dotenv import load_dotenv
+                load_dotenv()
+            except ImportError:
+                pass
+            self.env = os.environ
+        elif env is None:
+            self.env = os.environ
+        else:
+            self.env = env
+            
+        self.host = self.env.get("AI_GATEWAY_HOST", "127.0.0.1")
+        self.port = int(self.env.get("AI_GATEWAY_PORT", "8000"))
+        self.log_level = self.env.get("AI_GATEWAY_LOG_LEVEL", "info")
+        self.budget_mode = self.env.get("AI_GATEWAY_BUDGET_MODE", "normal")
         
         # Provider config
-        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
-        self.openrouter_model = os.getenv("OPENROUTER_MODEL", "qwen/qwen3.6-plus")
+        self.openrouter_api_key = self.env.get("OPENROUTER_API_KEY", "")
+        self.openrouter_model = self.env.get("OPENROUTER_MODEL", "qwen/qwen3.6-plus")
         
         self.providers: List[ProviderProfile] = self._parse_providers()
 
     def _parse_providers(self) -> List[ProviderProfile]:
         providers = []
         
-        env_vars = os.environ
+        # Add legacy OpenRouter if configured
+        if self.openrouter_api_key:
+            providers.append(ProviderProfile(
+                name="openrouter_legacy",
+                base_url="https://openrouter.ai/api/v1",
+                api_key=self.openrouter_api_key,
+                model=self.openrouter_model,
+                enabled=True,
+                supports_streaming=True
+            ))
+        
+        env_vars = self.env
         
         # Group by provider ID
         provider_data = {}

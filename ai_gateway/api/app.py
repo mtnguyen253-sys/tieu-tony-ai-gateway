@@ -127,14 +127,19 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         providers = registry.all() if hasattr(registry, 'all') else {}
         
         data = []
-        for p_name, p_instance in providers.items():
-            if hasattr(p_instance, "default_model"):
-                data.append({
-                    "id": p_instance.default_model,
-                    "object": "model",
-                    "created": int(time.time()),
-                    "owned_by": p_name
-                })
+        seen_models = set()
+        for p_name in providers.keys():
+            p_instance = registry.get_provider(p_name)
+            if p_instance and hasattr(p_instance, "default_model"):
+                model_id = p_instance.default_model
+                if model_id not in seen_models:
+                    seen_models.add(model_id)
+                    data.append({
+                        "id": model_id,
+                        "object": "model",
+                        "created": int(time.time()),
+                        "owned_by": p_name
+                    })
                 
         return {
             "object": "list",

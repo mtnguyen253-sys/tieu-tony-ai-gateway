@@ -8,10 +8,24 @@ from ai_gateway.core.router import NoProviderAvailableException
 class MockRegistry:
     def all(self):
         return {"mock-provider": {}}
+    def get_provider(self, name):
+        class MockProvider:
+            default_model = "mock-model"
+        return MockProvider()
+
+class MockDuplicateRegistry:
+    def all(self):
+        return {"p1": {}, "p2": {}}
+    def get_provider(self, name):
+        class MockProvider:
+            default_model = "shared-model"
+        return MockProvider()
 
 class MockEmptyRegistry:
     def all(self):
         return {}
+    def get_provider(self, name):
+        return None
 
 class MockOrchestrator:
     def execute(self, req):
@@ -27,6 +41,9 @@ class MockFailingOrchestrator:
 
 app = create_app(orchestrator=MockOrchestrator(), registry=MockRegistry())
 client = TestClient(app)
+
+duplicate_app = create_app(orchestrator=MockOrchestrator(), registry=MockDuplicateRegistry())
+duplicate_client = TestClient(duplicate_app)
 
 empty_app = create_app(orchestrator=MockFailingOrchestrator(), registry=MockEmptyRegistry())
 empty_client = TestClient(empty_app)
@@ -51,6 +68,13 @@ def test_list_models_empty():
     json_resp = response.json()
     assert "data" in json_resp
     assert len(json_resp["data"]) == 0
+
+def test_list_models_deduplication():
+    response = duplicate_client.get("/models")
+    assert response.status_code == 200
+    json_resp = response.json()
+    assert len(json_resp["data"]) == 1
+    assert json_resp["data"][0]["id"] == "shared-model"
 
 def test_chat_completions_missing_messages():
     payload = {
