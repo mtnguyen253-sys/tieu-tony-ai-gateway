@@ -146,7 +146,7 @@ AI_GATEWAY_PROVIDER_2_MAX_CONTEXT_TOKENS=128000
 
 ## Health Scoring (Sprint 31)
 
-Health Scoring là tính năng tự động theo dõi chất lượng của các provider/model/key trong quá trình chạy.
+Health Scoring là tính năng tự động theo dõi chất lượng của các provider/model/key trong quá trình chạy. 
 - Router sẽ không chỉ chọn provider dựa trên giá, token, mà còn xét đến lịch sử hoạt động.
 - `health_score` (từ 0.0 đến 1.0) sẽ bị trừ điểm nếu provider gặp nhiều lỗi (RateLimit, Timeout, Server Error, Auth Error) hoặc có latency quá cao.
 - Provider bị trừ điểm nhiều sẽ bị router phạt (penalty), giảm ưu tiên và bị đẩy xuống các fallback thấp hơn.
@@ -186,3 +186,34 @@ python -m ai_gateway.tools.usage_summary logs/usage.jsonl
 ```
 
 Để xem chi tiết tài liệu hướng dẫn cấu hình chi tiết cho từng loại client, tham khảo thêm tại thư mục `docs/clients/`.
+
+## 16. Adaptive Routing & Provider Statistics Report (Sprint 33)
+
+Hệ thống **Adaptive Routing** tự động theo dõi và học hỏi từ các số liệu thống kê sử dụng thực tế (in-memory rolling window) mà không cần AI/ML/Agent. Router sẽ sử dụng lịch sử này để cộng điểm thưởng (bonuses) hoặc trừ điểm phạt (penalties) cho các provider nhằm tối ưu hóa khả năng điều phối:
+
+- **Success rate >= 98%**: Cộng điểm thưởng (+2.0)
+- **Timeout > 10%**: Trừ điểm phạt (-3.0)
+- **Rate Limit liên tục**: Trừ điểm phạt (-2.0)
+- **Cache Hit cao (> 30%)**: Cộng điểm thưởng (+2.0)
+- **Latency trung bình thấp (< 1500ms)**: Cộng điểm thưởng (+1.0)
+- **Cost trung bình thấp (< 0.5 USD/req)**: Cộng điểm thưởng (+1.0)
+
+### Cấu hình biến môi trường (.env):
+```env
+AI_GATEWAY_ADAPTIVE_ROUTING_ENABLED=true
+AI_GATEWAY_ADAPTIVE_WINDOW_SIZE=50
+AI_GATEWAY_HISTORICAL_SUCCESS_BONUS=2.0
+AI_GATEWAY_HISTORICAL_FAILURE_PENALTY=-3.0
+AI_GATEWAY_HISTORICAL_RATE_LIMIT_PENALTY=-2.0
+AI_GATEWAY_HISTORICAL_CACHE_BONUS=2.0
+AI_GATEWAY_HISTORICAL_LATENCY_BONUS=1.0
+AI_GATEWAY_HISTORICAL_COST_BONUS=1.0
+```
+
+### Xem báo cáo thống kê và gợi ý tối ưu hóa (Recommendation):
+Sử dụng công cụ CLI để phân tích toàn bộ lịch sử sử dụng từ `usage.jsonl` và đưa ra khuyến nghị (`Preferred`, `GOOD`, `OK`, `Avoid temporarily`, `BAD`):
+```powershell
+python -m ai_gateway.tools.provider_statistics logs/usage.jsonl
+```
+
+

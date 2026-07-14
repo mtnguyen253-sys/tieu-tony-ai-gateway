@@ -169,3 +169,9 @@
 - **Manual Verification Dependency**: Verifying compatibility for specific tools relies on running manual smoke scripts or checking logs manually. We need an automated integration test suite that spins up a mock client for each supported tool.
 - **Lack of Granular Client Tagging**: Usage events in `logs/usage.jsonl` record provider/model metadata, but lack explicit tracking of which external client (e.g., Codex vs. Hermes vs. OpenClaw) initiated the request.
 - **Unified Stream-Ledger Synchronization**: Streamed requests have basic recording, but exact token counts are approximated or omitted if backend providers do not stream usage blocks, affecting the precision of cost ledger tracking.
+
+### Sprint 33 - Adaptive Routing
+- **In-Memory Statistics Loss**: Statistics are tracked in-memory, meaning all historical learning is lost when the gateway service restarts. In a production cluster with multi-worker processes or serverless environments, stats should be persisted to a distributed store (e.g., Redis or SQLite).
+- **Window Storage Overhead**: `StatisticsUpdater` retains full `UsageEvent` objects in its history list to re-calculate stats. While acceptable for modest window sizes (e.g., 50), extremely large windows could increase memory usage. A more memory-efficient solution would use streaming aggregations (such as Welford's algorithm for rolling average and variance).
+- **Time-based vs. Count-based Decay**: The decay mechanism currently drops events purely based on queue count (sliding-window). A true time-decay mechanism (where stats recover or decay exponentially over actual clock time) would prevent stale data from lingering during low-traffic periods.
+

@@ -80,6 +80,16 @@ class Settings:
         self.budget_mode = self.env.get("AI_GATEWAY_BUDGET_MODE", "normal")
         self.health_scoring_enabled = _parse_bool(self.env.get("AI_GATEWAY_HEALTH_SCORING_ENABLED", "true"), True)
         
+        # Adaptive Routing Config (Sprint 33)
+        self.adaptive_routing_enabled = _parse_bool(self.env.get("AI_GATEWAY_ADAPTIVE_ROUTING_ENABLED", "true"), True)
+        self.adaptive_window_size = _parse_int(self.env.get("AI_GATEWAY_ADAPTIVE_WINDOW_SIZE", "50"), 50)
+        self.historical_success_bonus = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_SUCCESS_BONUS", "2.0"), 2.0)
+        self.historical_failure_penalty = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_FAILURE_PENALTY", "-3.0"), -3.0)
+        self.historical_rate_limit_penalty = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_RATE_LIMIT_PENALTY", "-2.0"), -2.0)
+        self.historical_cache_bonus = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_CACHE_BONUS", "2.0"), 2.0)
+        self.historical_latency_bonus = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_LATENCY_BONUS", "1.0"), 1.0)
+        self.historical_cost_bonus = _parse_float(self.env.get("AI_GATEWAY_HISTORICAL_COST_BONUS", "1.0"), 1.0)
+        
         # Provider config
         self.openrouter_api_key = self.env.get("OPENROUTER_API_KEY", "")
         self.openrouter_model = self.env.get("OPENROUTER_MODEL", "qwen/qwen3.6-plus")
