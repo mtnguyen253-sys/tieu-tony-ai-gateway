@@ -25,7 +25,11 @@ class GenericOpenAICompatibleAdapter(BaseProvider):
         enabled: bool = True,
         cost_input_per_million: float = 0.0,
         cost_output_per_million: float = 0.0,
-        key_pool: Optional[KeyPool] = None
+        key_pool: Optional[KeyPool] = None,
+        model_tier: str = "balanced",
+        max_context_tokens: Optional[int] = None,
+        quality_score: Optional[float] = None,
+        supports_prompt_cache: bool = False
     ):
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -38,15 +42,23 @@ class GenericOpenAICompatibleAdapter(BaseProvider):
         self.cost_input_per_million = cost_input_per_million
         self.cost_output_per_million = cost_output_per_million
         self.key_pool = key_pool
+        self.model_tier = model_tier
+        self.max_context_tokens = max_context_tokens
+        self.quality_score = quality_score
+        self.supports_prompt_cache = supports_prompt_cache
 
     @property
     def capabilities(self) -> Dict[str, Any]:
         return {
-            "codebase_reading": 8,
-            "context_window": 8,
-            "reasoning": 8,
+            "codebase_reading": self.quality_score if self.quality_score is not None else 8,
+            "context_window": self.max_context_tokens if self.max_context_tokens is not None else 8,
+            "reasoning": self.quality_score if self.quality_score is not None else 8,
             "routing": True,
-            "cost": self.cost_input_per_million
+            "cost": self.cost_input_per_million,
+            "model_tier": self.model_tier,
+            "max_context_tokens": self.max_context_tokens,
+            "quality_score": self.quality_score,
+            "supports_prompt_cache": self.supports_prompt_cache
         }
 
     def connect(self) -> bool:

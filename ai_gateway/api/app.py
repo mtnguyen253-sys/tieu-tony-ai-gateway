@@ -72,7 +72,11 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                     enabled=p_config.enabled,
                     cost_input_per_million=p_config.cost_input_per_million or 0.0,
                     cost_output_per_million=p_config.cost_output_per_million or 0.0,
-                    key_pool=key_pool
+                    key_pool=key_pool,
+                    model_tier=getattr(p_config, "model_tier", "balanced"),
+                    max_context_tokens=getattr(p_config, "max_context_tokens", None),
+                    quality_score=getattr(p_config, "quality_score", None),
+                    supports_prompt_cache=getattr(p_config, "supports_prompt_cache", False)
                 )
                 registry.register(p_config.name, adapter)
                 

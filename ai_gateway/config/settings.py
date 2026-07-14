@@ -27,6 +27,10 @@ class ProviderProfile:
     cache_read_cost_per_million: Optional[float] = None
     cache_write_cost_per_million: Optional[float] = None
     cache_priority: float = 1.0
+    model_tier: str = "balanced"
+    quality_score: Optional[float] = None
+    supports_long_context: bool = False
+    max_context_tokens: Optional[int] = None
     keys: List[ProviderKeyProfile] = field(default_factory=list)
 
 
@@ -92,7 +96,8 @@ class Settings:
                 api_key=self.openrouter_api_key,
                 model=self.openrouter_model,
                 enabled=True,
-                supports_streaming=True
+                supports_streaming=True,
+                model_tier="balanced"
             ))
         
         env_vars = self.env
@@ -138,6 +143,11 @@ class Settings:
             cache_write_cost = _parse_float(data.get("cache_write_cost_per_million", ""))
             cache_priority = _parse_float(data.get("cache_priority", ""), 1.0)
             
+            model_tier = data.get("model_tier", "balanced").lower()
+            quality_score = _parse_float(data.get("quality_score", ""))
+            supports_long_context = _parse_bool(data.get("supports_long_context", ""), False)
+            max_context_tokens = _parse_int(data.get("max_context_tokens", ""))
+            
             keys = []
             for kid, kdata in data.get("keys", {}).items():
                 kname = kdata.get("name")
@@ -172,6 +182,10 @@ class Settings:
                 cache_read_cost_per_million=cache_read_cost,
                 cache_write_cost_per_million=cache_write_cost,
                 cache_priority=cache_priority,
+                model_tier=model_tier,
+                quality_score=quality_score,
+                supports_long_context=supports_long_context,
+                max_context_tokens=max_context_tokens,
                 keys=keys
             ))
             

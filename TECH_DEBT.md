@@ -149,3 +149,9 @@
 - **Health**: Chưa có provider health probe định kỳ.
 - **Security**: Chưa có encrypted secret store.
 - **Routing**: Chưa có dynamic routing learning từ production usage.
+
+### Sprint 30
+- **Dynamic Task Classification**: The `TaskClassifier` currently relies on heuristic keyword matching and simple length checks. It should ideally use a fast, local ML model or semantic embedding classifier for greater accuracy.
+- **Task Classification Overhead**: Classification adds a small processing overhead before routing.
+- **Heuristics Limitation**: Keyword-based classification might incorrectly categorize tasks if user intent is complex but uses simple keywords.
+- **Missing Tokenizer**: The length check uses a naive `len(char) / 4` approximation. We should integrate a real fast tokenizer like `tiktoken`.

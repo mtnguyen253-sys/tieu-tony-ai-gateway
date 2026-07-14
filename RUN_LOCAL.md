@@ -130,3 +130,16 @@ Xem báo cáo Usage Economics:
 python -m ai_gateway.tools.usage_summary logs/usage.jsonl
 ```
 Nếu Cache Ratio thấp, cân nhắc chọn các provider có `supports_prompt_cache=true`.
+
+## 14. Task Classification & Routing (Sprint 30)
+Gateway tự động phân loại mức độ phức tạp của từng yêu cầu (SIMPLE, STANDARD, COMPLEX, LONG_CONTEXT, CRITICAL) và chọn model tier phù hợp (CHEAP, BALANCED, STRONG, LONG_CONTEXT) nhằm tiết kiệm chi phí mà vẫn đảm bảo hiệu suất. Bạn có thể định cấu hình `model_tier` và `max_context_tokens` cho từng provider trong `.env`:
+
+```env
+AI_GATEWAY_PROVIDER_1_NAME=cheap_provider
+AI_GATEWAY_PROVIDER_1_MODEL_TIER=cheap
+AI_GATEWAY_PROVIDER_1_MAX_CONTEXT_TOKENS=8192
+
+AI_GATEWAY_PROVIDER_2_NAME=long_context_provider
+AI_GATEWAY_PROVIDER_2_MODEL_TIER=long_context
+AI_GATEWAY_PROVIDER_2_MAX_CONTEXT_TOKENS=128000
+```

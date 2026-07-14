@@ -19,7 +19,11 @@ def check_config():
     
     print("\nEnabled Providers:")
     for p in enabled_providers:
-        print(f"- {p.name} (Model: {p.model}, Streaming: {p.supports_streaming}, Cache: {p.supports_prompt_cache})")
+        print(f"- {p.name} (Model: {p.model}, Tier: {getattr(p, 'model_tier', 'balanced')}, Streaming: {p.supports_streaming}, Cache: {p.supports_prompt_cache})")
+        if getattr(p, 'max_context_tokens', None):
+            print(f"  Max Context: {p.max_context_tokens}")
+        if getattr(p, 'quality_score', None):
+            print(f"  Quality Score: {p.quality_score}")
         
     # Validation checks
     for p in providers:

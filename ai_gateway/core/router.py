@@ -120,7 +120,8 @@ class PolicyRouter:
                     continue
 
             # Score Calculation
-            score = ScoringEngine.score(capability, requirement, policy, quota, mode, prefer_cheaper, penalty)
+            task_policy = context.get("task_policy")
+            score = ScoringEngine.score(capability, requirement, policy, quota, mode, prefer_cheaper, penalty, task_policy=task_policy)
             scored_providers.append((score, name, provider))
             logger.info(f"Score for {name}: {score:.4f} (penalty: {penalty:.2f})")
 

@@ -28,6 +28,9 @@ class ProviderCapability(BaseModel):
     quota_weight: float = 1.0
     supports_prompt_cache: bool = False
     cache_read_cost: float = 0.0
+    model_tier: str = "balanced"
+    max_context_tokens: Optional[int] = None
+    quality_score: Optional[float] = None
 
 class TaskRequirement(BaseModel):
     task_type: TaskType = TaskType.GENERAL
@@ -58,7 +61,10 @@ class CapabilityRegistry:
             cost=raw_caps.get("cost", 0.0),
             quota_weight=raw_caps.get("quota_weight", 1.0),
             supports_prompt_cache=raw_caps.get("supports_prompt_cache", False),
-            cache_read_cost=raw_caps.get("cache_read_cost", 0.0)
+            cache_read_cost=raw_caps.get("cache_read_cost", 0.0),
+            model_tier=raw_caps.get("model_tier", "balanced"),
+            max_context_tokens=raw_caps.get("max_context_tokens"),
+            quality_score=raw_caps.get("quality_score")
         )
 
     def unregister(self, name: str) -> None:
@@ -119,7 +125,7 @@ class ScoringEngine:
         return weights
 
     @staticmethod
-    def score(capability: ProviderCapability, requirement: TaskRequirement, policy: RoutingPolicy, quota: float, mode: str = "normal", prefer_cheaper: bool = True, penalty: float = 0.0) -> float:
+    def score(capability: ProviderCapability, requirement: TaskRequirement, policy: RoutingPolicy, quota: float, mode: str = "normal", prefer_cheaper: bool = True, penalty: float = 0.0, task_policy: Any = None) -> float:
         weights = ScoringEngine.weight(policy, mode, prefer_cheaper)
 
         # Base quality score on task type
@@ -132,6 +138,10 @@ class ScoringEngine:
             quality_score = capability.translation
         else:
             quality_score = (capability.coding + capability.reasoning + capability.translation) / 3.0
+            
+        quality_override = getattr(capability, "quality_score", None)
+        if isinstance(quality_override, (int, float)):
+            quality_score = float(quality_override)
 
         # Cost score (inverted, 0 means best/free, higher is worse)
         # Assumes cost is typically between 0 and 10.
@@ -146,18 +156,55 @@ class ScoringEngine:
         
         # Cache bonus/penalty
         cache_bonus = 0.0
-        if (requirement.long_context or requirement.cache_preferred):
+        if (requirement.long_context or requirement.cache_preferred or (task_policy and getattr(task_policy, 'prefer_cache', False))):
             if capability.supports_prompt_cache:
                 cache_bonus = 2.0
             else:
                 cache_bonus = -0.5
+                
+        # Task Policy Tier Matching Bonus/Penalty
+        tier_bonus = 0.0
+        if task_policy:
+            cap_tier = capability.model_tier.lower()
+            rec_tier = task_policy.recommended_tier.value.lower()
+            
+            if rec_tier == "cheap":
+                if cap_tier == "cheap":
+                    tier_bonus += 5.0
+                elif cap_tier == "balanced":
+                    tier_bonus -= 2.0
+                elif cap_tier == "strong":
+                    tier_bonus -= 10.0
+            
+            elif rec_tier == "balanced":
+                if cap_tier == "balanced":
+                    tier_bonus += 3.0
+                elif cap_tier == "cheap":
+                    tier_bonus -= 1.0
+                elif cap_tier == "strong":
+                    tier_bonus -= 2.0
+                    
+            elif rec_tier == "strong":
+                if cap_tier == "strong":
+                    tier_bonus += 5.0
+                elif cap_tier == "balanced":
+                    tier_bonus += 1.0
+                elif cap_tier == "cheap":
+                    tier_bonus -= 10.0
+                    
+            if task_policy.recommended_tier.value.lower() == "long_context":
+                if capability.max_context_tokens and capability.max_context_tokens >= 100000:
+                    tier_bonus += 5.0
+                elif not capability.max_context_tokens or capability.max_context_tokens < 32000:
+                    tier_bonus -= 5.0
 
         final_score = (
             quality_score * weights["quality"] +
             cost_score * weights["cost"] +
             latency_score * weights["latency"] +
             quota_score * weights["quota"] +
-            cache_bonus
+            cache_bonus +
+            tier_bonus
         )
         final_score = max(0.0, final_score - penalty)
         return final_score

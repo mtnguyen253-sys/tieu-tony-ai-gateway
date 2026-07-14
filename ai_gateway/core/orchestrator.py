@@ -9,6 +9,8 @@ from ai_gateway.registry.capability import TaskRequirement, RoutingPolicy
 from ai_gateway.core.retry import RetryStrategy, NoRetryStrategy
 from ai_gateway.core.fallback import FallbackStrategy, NoFallbackStrategy
 from ai_gateway.adapters.base import BaseProvider
+from ai_gateway.core.task_classifier import TaskClassifier
+from ai_gateway.core.routing_policy_matrix import RoutingPolicyMatrix
 
 class ExecutionOrchestrator:
     """Orchestrates the lifecycle of a request."""
@@ -26,6 +28,8 @@ class ExecutionOrchestrator:
         self.retry_strategy = retry_strategy or NoRetryStrategy()
         self.fallback_strategy = fallback_strategy or NoFallbackStrategy()
         self.logger = logger or logging.getLogger(__name__)
+        self.classifier = TaskClassifier()
+        self.policy_matrix = RoutingPolicyMatrix()
 
     def execute(
         self,
@@ -42,6 +46,14 @@ class ExecutionOrchestrator:
         context = context or {}
         quotas = quotas or {}
         policy = policy or RoutingPolicy.BALANCED
+        
+        # 1. Classify Task
+        task_class = self.classifier.classify(request)
+        task_policy = self.policy_matrix.get_policy(task_class)
+        self.logger.info(f"Task classified as: {task_class.complexity} with policy recommended tier: {task_policy.recommended_tier}")
+        
+        context["task_classification"] = task_class
+        context["task_policy"] = task_policy
 
         def _operation(provider: BaseProvider) -> AgentResponse:
             def _inner():
@@ -89,6 +101,14 @@ class ExecutionOrchestrator:
         context = context or {}
         quotas = quotas or {}
         policy = policy or RoutingPolicy.BALANCED
+        
+        # 1. Classify Task
+        task_class = self.classifier.classify(request)
+        task_policy = self.policy_matrix.get_policy(task_class)
+        self.logger.info(f"Task stream classified as: {task_class.complexity} with policy recommended tier: {task_policy.recommended_tier}")
+        
+        context["task_classification"] = task_class
+        context["task_policy"] = task_policy
 
         def _operation(provider: BaseProvider):
             def _inner():
