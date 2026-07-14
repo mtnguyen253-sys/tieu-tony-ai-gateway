@@ -28,7 +28,7 @@ from ai_gateway.core.retry import NoRetryStrategy
 from ai_gateway.core.executor import ExecutionEngine, AuthenticationException, RateLimitException, TimeoutException
 
 
-def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None, quota_tracker: Optional[InMemoryQuotaTracker] = None, health_tracker: Optional[InMemoryHealthTracker] = None) -> FastAPI:
+def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None, quota_tracker: Optional[InMemoryQuotaTracker] = None, health_tracker: Optional[InMemoryHealthTracker] = None, usage_ledger: Optional[Any] = None) -> FastAPI:
     if app_settings is None:
         from ai_gateway.config.settings import settings as default_settings
         app_settings = default_settings
@@ -37,6 +37,10 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     if health_tracker is None:
         if getattr(app_settings, "health_scoring_enabled", True):
             health_tracker = InMemoryHealthTracker()
+
+    if usage_ledger is None:
+        from ai_gateway.core.usage import JsonlUsageLedger
+        usage_ledger = JsonlUsageLedger()
 
     cooldown_manager = None
 
@@ -47,7 +51,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     if registry is None:
         registry = CapabilityRegistry()
         cooldown_manager = ProviderCooldownManager()
-        
+
         # OpenRouter fallback config
         if app_settings.openrouter_api_key:
             from ai_gateway.adapters.openrouter import OpenRouterAdapter
@@ -56,18 +60,18 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             # For openrouter legacy we can wrap it in a keypool if needed or just let it use api_key. We'll use api_key for simplicity.
             provider = OpenRouterAdapter(api_key=app_settings.openrouter_api_key, default_model=openrouter_model)
             registry.register("openrouter", provider)
-            
+
         # Register generic providers
         from ai_gateway.adapters.openai_compatible import GenericOpenAICompatibleAdapter
         from ai_gateway.config.model_prices import MODEL_PRICES
-        
+
         import logging
         logger = logging.getLogger(__name__)
 
         for p_config in app_settings.providers:
             if not p_config.enabled:
                 continue
-            
+
             try:
                 key_pool = KeyPool(p_config.name, p_config.keys, quota_tracker, cooldown_manager) if p_config.keys else None
                 adapter = GenericOpenAICompatibleAdapter(
@@ -86,7 +90,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                     supports_prompt_cache=getattr(p_config, "supports_prompt_cache", False)
                 )
                 registry.register(p_config.name, adapter)
-                
+
                 # Register cost
                 key = f"{p_config.name}:{p_config.model}"
                 MODEL_PRICES[key] = {
@@ -104,7 +108,19 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         router = PolicyRouter(registry, circuit_breaker=circuit_breaker, cooldown_manager=cooldown_manager, health_tracker=health_tracker)
         retry_strategy = NoRetryStrategy()
         fallback_strategy = ProviderFallbackStrategy(router)
-        executor = ExecutionEngine(circuit_breaker, cooldown_manager=cooldown_manager, quota_tracker=quota_tracker, health_tracker=health_tracker)
+
+        from ai_gateway.core.cost import CostEstimator
+        from ai_gateway.config.model_prices import MODEL_PRICES
+        cost_estimator = CostEstimator(prices=MODEL_PRICES)
+
+        executor = ExecutionEngine(
+            circuit_breaker,
+            cooldown_manager=cooldown_manager,
+            quota_tracker=quota_tracker,
+            health_tracker=health_tracker,
+            usage_ledger=usage_ledger,
+            cost_estimator=cost_estimator
+        )
 
         orchestrator = ExecutionOrchestrator(
             engine=executor,
@@ -132,21 +148,21 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             "budget_mode": app_settings.budget_mode,
             "health_tracking_enabled": health_tracker is not None
         }
-        
+
         if health_tracker:
             snapshot = health_tracker.snapshot()
             unhealthy_count = sum(1 for state in snapshot.values() if state.health_score < 0.5)
             degraded_count = sum(1 for state in snapshot.values() if 0.5 <= state.health_score < 1.0)
             response["unhealthy_provider_count"] = unhealthy_count
             response["degraded_provider_count"] = degraded_count
-            
+
         return response
     @app.get("/models")
     @app.get("/v1/models")
     async def list_models():
         """Returns available models in OpenAI-compatible format."""
         providers = registry.all() if hasattr(registry, 'all') else {}
-        
+
         data = []
         seen_models = set()
         for p_name in providers.keys():
@@ -161,7 +177,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                         "created": int(time.time()),
                         "owned_by": p_name
                     })
-                
+
         return {
             "object": "list",
             "data": data
@@ -170,15 +186,15 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     @app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
     async def chat_completions(req: ChatCompletionRequest):
         """OpenAI-compatible chat completions endpoint."""
-        
+
         if not req.messages:
             raise HTTPException(status_code=422, detail="Request must contain at least one message.")
-            
+
         # Map to CAP AgentRequest
         cap_messages = [
             {"role": m.role, "content": m.content} for m in req.messages
         ]
-        
+
 
         agent_req = AgentRequest(
             request_id=f"chatcmpl-{uuid.uuid4().hex}",
@@ -186,16 +202,16 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             tools=None,
             stream=req.stream
         )
-        
+
         try:
             if req.stream:
                 stream_iter = orchestrator.execute_stream(agent_req)
-                
+
                 async def generate():
                     response_id = agent_req.request_id
                     created = int(time.time())
                     model = req.model
-                    
+
                     try:
                         for chunk in stream_iter:
                             content = chunk.get("content")
@@ -203,19 +219,19 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                             usage = chunk.get("usage")
                             if chunk.get("model"):
                                 model = chunk.get("model")
-                            
+
                             delta = {}
                             if content is not None:
                                 delta["content"] = content
                             elif not finish_reason:
                                 delta["role"] = "assistant"
-                                
+
                             choice_dict = {
                                 "index": 0,
                                 "delta": delta,
                                 "finish_reason": finish_reason
                             }
-                            
+
                             chunk_data = {
                                 "id": response_id,
                                 "object": "chat.completion.chunk",
@@ -223,12 +239,12 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                                 "model": model,
                                 "choices": [choice_dict]
                             }
-                            
+
                             if usage:
                                 chunk_data["usage"] = usage
-                                
+
                             yield f"data: {json.dumps(chunk_data, ensure_ascii=False)}\n\n"
-                            
+
                         yield "data: [DONE]\n\n"
                     except Exception as e:
                         # Yield a custom error if we fail mid-stream
@@ -242,25 +258,25 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                         }
                         yield f"data: {json.dumps(err_data, ensure_ascii=False)}\n\n"
                         yield "data: [DONE]\n\n"
-                        
+
                 return StreamingResponse(generate(), media_type="text/event-stream")
 
             response = orchestrator.execute(agent_req)
 
-            
+
             # Map back to OpenAI Response
             content = "Success"
             prompt_tokens = 0
             completion_tokens = 0
             total_tokens = 0
-            
+
             if response.content is not None:
                 content = response.content
             if hasattr(response, 'usage') and response.usage:
                 prompt_tokens = response.usage.get("prompt_tokens", 0)
                 completion_tokens = response.usage.get("completion_tokens", 0)
                 total_tokens = response.usage.get("total_tokens", 0)
-                
+
             choice = ChatCompletionChoice(
                 index=0,
                 message=APIMessage(
@@ -269,7 +285,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
                 ),
                 finish_reason="stop"
             )
-            
+
             return ChatCompletionResponse(
                 id=response.response_id,
                 created=int(time.time()),

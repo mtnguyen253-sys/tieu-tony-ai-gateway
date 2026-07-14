@@ -163,3 +163,9 @@
 - **Time Decay**: Thuật toán trừ điểm chưa có cơ chế phục hồi điểm theo thời gian chuẩn mực (decay function) hoàn chỉnh, ngoại trừ auth error.
 - **Dashboard**: Chưa có giao diện dashboard theo dõi provider health.
 - **Quality Signal**: Chưa có user feedback signal thực sự để chấm điểm model quality ngoài network layer.
+
+### Sprint 32 - Connect Codex / Hermes / OpenClaw through Tiểu Tony
+- **Client Authentication Bypass**: Local gateway intentionally bypasses strict client API key validation (accepts dummy keys like `dummy`). For multi-user staging/production, we need a secure API Key Validation Middleware.
+- **Manual Verification Dependency**: Verifying compatibility for specific tools relies on running manual smoke scripts or checking logs manually. We need an automated integration test suite that spins up a mock client for each supported tool.
+- **Lack of Granular Client Tagging**: Usage events in `logs/usage.jsonl` record provider/model metadata, but lack explicit tracking of which external client (e.g., Codex vs. Hermes vs. OpenClaw) initiated the request.
+- **Unified Stream-Ledger Synchronization**: Streamed requests have basic recording, but exact token counts are approximated or omitted if backend providers do not stream usage blocks, affecting the precision of cost ledger tracking.

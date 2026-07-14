@@ -39,12 +39,12 @@ class ValidationException(Exception): pass
 
 class ExecutionEngine:
     def __init__(
-        self, 
-        circuit_breaker: CircuitBreaker, 
-        usage_ledger: Optional[UsageLedger] = None, 
-        budget_manager: Optional[BudgetManager] = None, 
-        cost_estimator: Optional[CostEstimator] = None, 
-        cooldown_manager: Optional[ProviderCooldownManager] = None, 
+        self,
+        circuit_breaker: CircuitBreaker,
+        usage_ledger: Optional[UsageLedger] = None,
+        budget_manager: Optional[BudgetManager] = None,
+        cost_estimator: Optional[CostEstimator] = None,
+        cooldown_manager: Optional[ProviderCooldownManager] = None,
         quota_tracker: Optional[InMemoryQuotaTracker] = None,
         health_tracker: Optional[InMemoryHealthTracker] = None,
         logger: Optional[logging.Logger] = None
@@ -72,71 +72,217 @@ class ExecutionEngine:
             raise ValidationException("Provider cannot be None.")
 
         self.logger.info(f"Executing request {request.request_id} with provider {provider.name}")
-        
+
         if not self.circuit_breaker.is_available(provider.name):
             raise CircuitOpenException(f"Circuit breaker is OPEN for {provider.name}")
 
         key_name = kwargs.get("key_name")
-        
+
         start_time = time.time()
         try:
             response = provider.chat(request)
             latency_ms = (time.time() - start_time) * 1000
-            
+
             # Record success
             self.circuit_breaker.record_success(provider.name)
-            usage = getattr(response, "usage", {})
+            usage = getattr(response, "usage", {}) or {}
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            cached_input_tokens = usage.get("cached_input_tokens", 0)
+            total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+            estimated_cost = 0.0
+            if self.cost_estimator:
+                estimated_cost = self.cost_estimator.estimate(
+                    provider.name,
+                    getattr(response, "model", None) or getattr(request, "model", None),
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    cached_input_tokens=cached_input_tokens
+                )
+
             self._record_usage(
                 provider.name,
-                "success", 
+                "success",
                 key_name=key_name or response.metadata.get("key_name") if getattr(response, "metadata", None) else None,
-                input_tokens=usage.get("input_tokens", 0),
-                output_tokens=usage.get("output_tokens", 0),
-                cost=0.0 
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=estimated_cost
             )
             if self.health_tracker:
-                self.health_tracker.record_success(provider.name, model=request.model, key_name=key_name, latency_ms=latency_ms)
+                self.health_tracker.record_success(provider.name, model=getattr(request, "model", None), key_name=key_name, latency_ms=latency_ms)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        resolved_model=getattr(response, "model", None) or getattr(request, "model", None),
+                        input_tokens=input_tokens,
+                        cached_input_tokens=cached_input_tokens,
+                        output_tokens=output_tokens,
+                        total_tokens=total_tokens,
+                        estimated_cost=estimated_cost,
+                        latency_ms=latency_ms,
+                        status="success",
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record success event in ledger: {ex}")
+
             self.logger.info(f"Request {request.request_id} succeeded")
             return response
-            
+
         except RateLimitException as e:
             latency_ms = (time.time() - start_time) * 1000
             if self.health_tracker:
-                self.health_tracker.record_rate_limit(provider.name, model=e.model or request.model, key_name=e.key_name or key_name, latency_ms=latency_ms)
+                self.health_tracker.record_rate_limit(provider.name, model=e.model or getattr(request, "model", None), key_name=e.key_name or key_name, latency_ms=latency_ms)
             if self.cooldown_manager:
                 self.cooldown_manager.mark_cooldown(provider.name, duration=e.retry_after or 60.0, model=e.model, reason="RateLimit")
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="RateLimitException", key_name=e.key_name)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        status="error",
+                        error_type="RateLimitException",
+                        error_code="provider_rate_limited",
+                        latency_ms=latency_ms,
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream,
+                        cooldown_triggered=True
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record rate limit event in ledger: {ex}")
             raise
         except TimeoutException as e:
             latency_ms = (time.time() - start_time) * 1000
             if self.health_tracker:
-                self.health_tracker.record_timeout(provider.name, model=request.model, key_name=e.key_name or key_name, latency_ms=latency_ms)
+                self.health_tracker.record_timeout(provider.name, model=getattr(request, "model", None), key_name=e.key_name or key_name, latency_ms=latency_ms)
             # If we are in HALF_OPEN, a timeout is a failure that should trip the breaker again.
             if self.circuit_breaker.get_state(provider.name) == CircuitState.HALF_OPEN:
                 self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="TimeoutException", key_name=e.key_name)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        status="error",
+                        error_type="TimeoutException",
+                        error_code="provider_timeout",
+                        latency_ms=latency_ms,
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record timeout event in ledger: {ex}")
             raise
         except AuthenticationException as e:
             latency_ms = (time.time() - start_time) * 1000
             if self.health_tracker:
-                self.health_tracker.record_error(provider.name, model=request.model, key_name=e.key_name or key_name, error_type="auth", latency_ms=latency_ms)
+                self.health_tracker.record_error(provider.name, model=getattr(request, "model", None), key_name=e.key_name or key_name, error_type="auth", latency_ms=latency_ms)
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="AuthenticationException", key_name=e.key_name)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        status="error",
+                        error_type="AuthenticationException",
+                        error_code="invalid_api_key",
+                        latency_ms=latency_ms,
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record auth event in ledger: {ex}")
             raise
         except ProviderUnavailableException as e:
             latency_ms = (time.time() - start_time) * 1000
             if self.health_tracker:
-                self.health_tracker.record_error(provider.name, model=request.model, key_name=e.key_name or key_name, error_type="server", latency_ms=latency_ms)
+                self.health_tracker.record_error(provider.name, model=getattr(request, "model", None), key_name=e.key_name or key_name, error_type="server", latency_ms=latency_ms)
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="ProviderUnavailableException", key_name=e.key_name)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        status="error",
+                        error_type="ProviderUnavailableException",
+                        error_code="no_provider_available",
+                        latency_ms=latency_ms,
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record provider unavailable event in ledger: {ex}")
             raise
         except Exception as e:
             latency_ms = (time.time() - start_time) * 1000
             if self.health_tracker:
-                self.health_tracker.record_error(provider.name, model=request.model, key_name=key_name, error_type="unknown", latency_ms=latency_ms)
+                self.health_tracker.record_error(provider.name, model=getattr(request, "model", None), key_name=key_name, error_type="unknown", latency_ms=latency_ms)
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type=type(e).__name__, key_name=key_name)
+
+            if self.usage_ledger:
+                try:
+                    from ai_gateway.core.usage import UsageEvent
+                    event = UsageEvent(
+                        request_id=request.request_id,
+                        timestamp=time.time(),
+                        provider=provider.name,
+                        model=getattr(request, "model", None),
+                        status="error",
+                        error_type=type(e).__name__,
+                        latency_ms=latency_ms,
+                        fallback_count=kwargs.get("fallback_count", 0),
+                        retry_count=kwargs.get("retry_count", 0),
+                        route_policy=kwargs.get("policy"),
+                        stream=request.stream
+                    )
+                    self.usage_ledger.record(event)
+                except Exception as ex:
+                    self.logger.error(f"Failed to record unknown exception in ledger: {ex}")
             raise
 
     def execute_stream(self, request: AgentRequest, provider: BaseProvider, **kwargs):

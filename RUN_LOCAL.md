@@ -146,7 +146,7 @@ AI_GATEWAY_PROVIDER_2_MAX_CONTEXT_TOKENS=128000
 
 ## Health Scoring (Sprint 31)
 
-Health Scoring là tính năng tự động theo dõi chất lượng của các provider/model/key trong quá trình chạy. 
+Health Scoring là tính năng tự động theo dõi chất lượng của các provider/model/key trong quá trình chạy.
 - Router sẽ không chỉ chọn provider dựa trên giá, token, mà còn xét đến lịch sử hoạt động.
 - `health_score` (từ 0.0 đến 1.0) sẽ bị trừ điểm nếu provider gặp nhiều lỗi (RateLimit, Timeout, Server Error, Auth Error) hoặc có latency quá cao.
 - Provider bị trừ điểm nhiều sẽ bị router phạt (penalty), giảm ưu tiên và bị đẩy xuống các fallback thấp hơn.
@@ -157,3 +157,32 @@ Bật/tắt tính năng này qua biến:
 ```env
 AI_GATEWAY_HEALTH_SCORING_ENABLED=true
 ```
+
+## 15. Sử dụng Tiểu Tony làm OpenAI-compatible Gateway cho Client bên ngoài (Sprint 32)
+
+Tiểu Tony có thể hoạt động như một gateway trung gian hoàn chỉnh, tương thích 100% với đặc tả API OpenAI Chat Completions. Bạn có thể kết nối bất kỳ coding tool/agent bên ngoài nào (như `Codex CLI`, `Hermes`, `OpenClaw`, `OpenAI SDK`) bằng các cài đặt sau:
+
+### Các Thông Số Kết Nối Core:
+- **Base URL**: `http://127.0.0.1:8000/v1` (Lưu ý bắt buộc phải có hậu tố `/v1`).
+- **API Key**: Bất kỳ chuỗi ký tự nào (ví dụ: `dummy`), do gateway bỏ qua xác thực key ở môi trường local.
+- **Model**: Tên model muốn sử dụng (ví dụ: `qwen/qwen3.6-plus` hoặc `DeepSeek-V4-Pro`).
+
+### Xác Thực Kết Nối Qua Smoke Script:
+Chạy kịch bản smoke kiểm thử đồng bộ (streaming, tool-calling, fallback, và models) dành riêng cho các client bên ngoài:
+
+- **Bằng Python**:
+  ```powershell
+  python examples/smoke_external_client.py
+  ```
+- **Bằng PowerShell**:
+  ```powershell
+  .\scripts\smoke_external_client.ps1
+  ```
+
+### Xem Báo Cáo Usage Economics Từ Client:
+Sau khi client của bạn gửi yêu cầu qua gateway, lịch sử sử dụng sẽ tự động ghi nhận vào `logs/usage.jsonl`. Xem tổng hợp thống kê bằng công cụ phân tích:
+```powershell
+python -m ai_gateway.tools.usage_summary logs/usage.jsonl
+```
+
+Để xem chi tiết tài liệu hướng dẫn cấu hình chi tiết cho từng loại client, tham khảo thêm tại thư mục `docs/clients/`.
