@@ -1,3 +1,4 @@
+from ai_gateway.core.health import InMemoryHealthTracker
 from ai_gateway.core.budget import BudgetManager
 import time
 import logging
@@ -30,11 +31,12 @@ class NoProviderAvailableException(Exception):
 class PolicyRouter:
     """Routes tasks to the most suitable AI provider based on capabilities and policies."""
     
-    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None, budget_manager: Optional[BudgetManager] = None):
+    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None, budget_manager: Optional[BudgetManager] = None, health_tracker: Optional[InMemoryHealthTracker] = None):
         self.registry = registry
         self.circuit_breaker = circuit_breaker
         self.cooldown_manager = cooldown_manager
         self.budget_manager = budget_manager
+        self.health_tracker = health_tracker
 
     def route(
         self,
@@ -107,10 +109,14 @@ class PolicyRouter:
             prefer_cheaper = True
             penalty = 0.0
             
+            if self.health_tracker:
+                health_score = self.health_tracker.get_score(name)
+                penalty += (1.0 - health_score) * 10.0
+
             if self.budget_manager:
                 mode = self.budget_manager.policy.mode
                 prefer_cheaper = self.budget_manager.policy.prefer_cheaper_models
-                penalty = self.budget_manager.get_penalty(name)
+                penalty += self.budget_manager.get_penalty(name)
                 
                 # We can do a rudimentary budget check if capability has a typical cost
                 # For instance, if capability.cost > 0:

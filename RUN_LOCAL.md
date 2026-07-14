@@ -143,3 +143,17 @@ AI_GATEWAY_PROVIDER_2_NAME=long_context_provider
 AI_GATEWAY_PROVIDER_2_MODEL_TIER=long_context
 AI_GATEWAY_PROVIDER_2_MAX_CONTEXT_TOKENS=128000
 ```
+
+## Health Scoring (Sprint 31)
+
+Health Scoring là tính năng tự động theo dõi chất lượng của các provider/model/key trong quá trình chạy. 
+- Router sẽ không chỉ chọn provider dựa trên giá, token, mà còn xét đến lịch sử hoạt động.
+- `health_score` (từ 0.0 đến 1.0) sẽ bị trừ điểm nếu provider gặp nhiều lỗi (RateLimit, Timeout, Server Error, Auth Error) hoặc có latency quá cao.
+- Provider bị trừ điểm nhiều sẽ bị router phạt (penalty), giảm ưu tiên và bị đẩy xuống các fallback thấp hơn.
+
+Khác với `Cooldown` (ngừng sử dụng provider trong một khoảng thời gian cố định khi gặp Rate Limit), `Health Score` là việc trừ điểm dài hạn hơn cho các lỗi liên quan tới sự không ổn định (timeout, server error).
+
+Bật/tắt tính năng này qua biến:
+```env
+AI_GATEWAY_HEALTH_SCORING_ENABLED=true
+```

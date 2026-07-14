@@ -78,6 +78,7 @@ class Settings:
         self.port = int(self.env.get("AI_GATEWAY_PORT", "8000"))
         self.log_level = self.env.get("AI_GATEWAY_LOG_LEVEL", "info")
         self.budget_mode = self.env.get("AI_GATEWAY_BUDGET_MODE", "normal")
+        self.health_scoring_enabled = _parse_bool(self.env.get("AI_GATEWAY_HEALTH_SCORING_ENABLED", "true"), True)
         
         # Provider config
         self.openrouter_api_key = self.env.get("OPENROUTER_API_KEY", "")

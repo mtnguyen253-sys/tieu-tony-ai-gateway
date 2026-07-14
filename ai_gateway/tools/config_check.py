@@ -16,6 +16,7 @@ def check_config():
     print(f"Key count: {key_count}")
     print(f"Enabled key count: {enabled_key_count}")
     print(f"Budget mode: {settings.budget_mode}")
+    print(f"Health scoring enabled: {getattr(settings, 'health_scoring_enabled', True)}")
     
     print("\nEnabled Providers:")
     for p in enabled_providers:
@@ -32,6 +33,7 @@ def check_config():
         if not p.api_key and not p.keys:
              print(f"[WARNING] Provider {p.name} missing API key/keys")
     
+    print("\nNote: Runtime health state is in-memory and only available in the running server process.")
     print("\nConfig validation complete.")
 
 if __name__ == "__main__":

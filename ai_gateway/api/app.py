@@ -1,3 +1,4 @@
+from ai_gateway.core.health import InMemoryHealthTracker
 import time
 import uuid
 from typing import Dict, Any, List, Optional
@@ -27,11 +28,17 @@ from ai_gateway.core.retry import NoRetryStrategy
 from ai_gateway.core.executor import ExecutionEngine, AuthenticationException, RateLimitException, TimeoutException
 
 
-def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None, quota_tracker: Optional[InMemoryQuotaTracker] = None) -> FastAPI:
+def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: Optional[CapabilityRegistry] = None, app_settings: Optional[Any] = None, quota_tracker: Optional[InMemoryQuotaTracker] = None, health_tracker: Optional[InMemoryHealthTracker] = None) -> FastAPI:
     if app_settings is None:
         from ai_gateway.config.settings import settings as default_settings
         app_settings = default_settings
     app = FastAPI(title="Tiểu Tony AI Gateway", version="0.1.0")
+
+    if health_tracker is None:
+        if getattr(app_settings, "health_scoring_enabled", True):
+            health_tracker = InMemoryHealthTracker()
+
+    cooldown_manager = None
 
     # Initialize core components if not provided
     if quota_tracker is None:
@@ -94,10 +101,10 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     if orchestrator is None:
         cooldown_manager = cooldown_manager or ProviderCooldownManager()
         circuit_breaker = CircuitBreaker()
-        router = PolicyRouter(registry, circuit_breaker=circuit_breaker, cooldown_manager=cooldown_manager)
+        router = PolicyRouter(registry, circuit_breaker=circuit_breaker, cooldown_manager=cooldown_manager, health_tracker=health_tracker)
         retry_strategy = NoRetryStrategy()
         fallback_strategy = ProviderFallbackStrategy(router)
-        executor = ExecutionEngine(circuit_breaker, cooldown_manager=cooldown_manager, quota_tracker=quota_tracker)
+        executor = ExecutionEngine(circuit_breaker, cooldown_manager=cooldown_manager, quota_tracker=quota_tracker, health_tracker=health_tracker)
 
         orchestrator = ExecutionOrchestrator(
             engine=executor,
@@ -113,7 +120,7 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         enabled_providers_count = sum(1 for p in app_settings.providers if p.enabled)
         key_count = sum(len(p.keys) for p in app_settings.providers)
         enabled_key_count = sum(sum(1 for k in p.keys if k.enabled) for p in app_settings.providers)
-        return {
+        response = {
             "status": "ok",
             "service": "ai_gateway",
             "version": "0.1.0",
@@ -122,8 +129,18 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
             "enabled_provider_count": enabled_providers_count,
             "key_count": key_count,
             "enabled_key_count": enabled_key_count,
-            "budget_mode": app_settings.budget_mode
+            "budget_mode": app_settings.budget_mode,
+            "health_tracking_enabled": health_tracker is not None
         }
+        
+        if health_tracker:
+            snapshot = health_tracker.snapshot()
+            unhealthy_count = sum(1 for state in snapshot.values() if state.health_score < 0.5)
+            degraded_count = sum(1 for state in snapshot.values() if 0.5 <= state.health_score < 1.0)
+            response["unhealthy_provider_count"] = unhealthy_count
+            response["degraded_provider_count"] = degraded_count
+            
+        return response
     @app.get("/models")
     @app.get("/v1/models")
     async def list_models():

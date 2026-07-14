@@ -1,3 +1,5 @@
+import time
+from ai_gateway.core.health import InMemoryHealthTracker
 import logging
 from typing import Optional, Dict, Any
 from ai_gateway.protocols.cap import AgentRequest, AgentResponse
@@ -44,6 +46,7 @@ class ExecutionEngine:
         cost_estimator: Optional[CostEstimator] = None, 
         cooldown_manager: Optional[ProviderCooldownManager] = None, 
         quota_tracker: Optional[InMemoryQuotaTracker] = None,
+        health_tracker: Optional[InMemoryHealthTracker] = None,
         logger: Optional[logging.Logger] = None
     ):
         self.circuit_breaker = circuit_breaker
@@ -52,6 +55,7 @@ class ExecutionEngine:
         self.cost_estimator = cost_estimator
         self.cooldown_manager = cooldown_manager
         self.quota_tracker = quota_tracker
+        self.health_tracker = health_tracker
         self.logger = logger or logging.getLogger(__name__)
 
     def _record_usage(self, provider_name: str, status: str, error_type=None, key_name=None, cost=0.0, input_tokens=0, output_tokens=0):
@@ -74,8 +78,10 @@ class ExecutionEngine:
 
         key_name = kwargs.get("key_name")
         
+        start_time = time.time()
         try:
             response = provider.chat(request)
+            latency_ms = (time.time() - start_time) * 1000
             
             # Record success
             self.circuit_breaker.record_success(provider.name)
@@ -88,22 +94,47 @@ class ExecutionEngine:
                 output_tokens=usage.get("output_tokens", 0),
                 cost=0.0 
             )
+            if self.health_tracker:
+                self.health_tracker.record_success(provider.name, model=request.model, key_name=key_name, latency_ms=latency_ms)
             self.logger.info(f"Request {request.request_id} succeeded")
             return response
             
         except RateLimitException as e:
+            latency_ms = (time.time() - start_time) * 1000
+            if self.health_tracker:
+                self.health_tracker.record_rate_limit(provider.name, model=e.model or request.model, key_name=e.key_name or key_name, latency_ms=latency_ms)
             if self.cooldown_manager:
                 self.cooldown_manager.mark_cooldown(provider.name, duration=e.retry_after or 60.0, model=e.model, reason="RateLimit")
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="RateLimitException", key_name=e.key_name)
             raise
         except TimeoutException as e:
+            latency_ms = (time.time() - start_time) * 1000
+            if self.health_tracker:
+                self.health_tracker.record_timeout(provider.name, model=request.model, key_name=e.key_name or key_name, latency_ms=latency_ms)
             # If we are in HALF_OPEN, a timeout is a failure that should trip the breaker again.
             if self.circuit_breaker.get_state(provider.name) == CircuitState.HALF_OPEN:
                 self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type="TimeoutException", key_name=e.key_name)
             raise
+        except AuthenticationException as e:
+            latency_ms = (time.time() - start_time) * 1000
+            if self.health_tracker:
+                self.health_tracker.record_error(provider.name, model=request.model, key_name=e.key_name or key_name, error_type="auth", latency_ms=latency_ms)
+            self.circuit_breaker.record_failure(provider.name)
+            self._record_usage(provider.name, "error", error_type="AuthenticationException", key_name=e.key_name)
+            raise
+        except ProviderUnavailableException as e:
+            latency_ms = (time.time() - start_time) * 1000
+            if self.health_tracker:
+                self.health_tracker.record_error(provider.name, model=request.model, key_name=e.key_name or key_name, error_type="server", latency_ms=latency_ms)
+            self.circuit_breaker.record_failure(provider.name)
+            self._record_usage(provider.name, "error", error_type="ProviderUnavailableException", key_name=e.key_name)
+            raise
         except Exception as e:
+            latency_ms = (time.time() - start_time) * 1000
+            if self.health_tracker:
+                self.health_tracker.record_error(provider.name, model=request.model, key_name=key_name, error_type="unknown", latency_ms=latency_ms)
             self.circuit_breaker.record_failure(provider.name)
             self._record_usage(provider.name, "error", error_type=type(e).__name__, key_name=key_name)
             raise

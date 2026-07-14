@@ -31,6 +31,10 @@ def main():
     cost_by_model = defaultdict(float)
     tokens_by_model = defaultdict(int)
     error_by_model = defaultdict(int)
+    success_by_model = defaultdict(int)
+    rate_limit_by_model = defaultdict(int)
+    latency_sum_by_model = defaultdict(float)
+    latency_count_by_model = defaultdict(int)
     
     top_output_heavy = []
 
@@ -86,8 +90,15 @@ def main():
                 
                 cost_by_model[key] += cost
                 tokens_by_model[key] += tot_tok
-                if status == "error":
+                if status == "success":
+                    success_by_model[key] += 1
+                elif status == "error":
                     error_by_model[key] += 1
+                if event.get("error_code") == "provider_rate_limited" or event.get("error_type") == "RateLimitException":
+                    rate_limit_by_model[key] += 1
+                if latency is not None:
+                    latency_sum_by_model[key] += latency
+                    latency_count_by_model[key] += 1
                 
                 if out_tok > 0:
                     top_output_heavy.append({
@@ -168,6 +179,8 @@ def main():
         "cost_by_provider_model": dict(cost_by_model),
         "tokens_by_provider_model": dict(tokens_by_model),
         "error_count_by_provider_model": dict(error_by_model),
+        "success_count_by_provider_model": dict(success_by_model),
+        "rate_limit_count_by_provider_model": dict(rate_limit_by_model),
         "top_expensive_models": [{"model": k, "cost": v} for k, v in top_expensive],
         "top_output_heavy_requests": top_output_heavy,
         "warnings": warnings,
@@ -209,11 +222,20 @@ def main():
         print(f"  {k}: {v} tokens")
     print()
     
-    print("--- Errors by Provider/Model ---")
-    if not error_by_model:
+    print("--- Reliability by Provider/Model ---")
+    all_models = set(success_by_model.keys()) | set(error_by_model.keys())
+    if not all_models:
         print("  None")
-    for k, v in sorted(error_by_model.items(), key=lambda x: x[1], reverse=True):
-        print(f"  {k}: {v} errors")
+    for k in sorted(all_models):
+        succ = success_by_model[k]
+        err = error_by_model[k]
+        rl = rate_limit_by_model[k]
+        total = succ + err
+        succ_rate = (succ / total) * 100 if total > 0 else 0
+        l_sum = latency_sum_by_model[k]
+        l_cnt = latency_count_by_model[k]
+        avg_l = l_sum / l_cnt if l_cnt > 0 else 0
+        print(f"  {k}: {succ_rate:.1f}% success ({succ} succ, {err} err, {rl} rate_limit, ~{avg_l:.1f}ms avg)")
     print()
     
     if top_output_heavy:

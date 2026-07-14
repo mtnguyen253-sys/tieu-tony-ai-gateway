@@ -155,3 +155,11 @@
 - **Task Classification Overhead**: Classification adds a small processing overhead before routing.
 - **Heuristics Limitation**: Keyword-based classification might incorrectly categorize tasks if user intent is complex but uses simple keywords.
 - **Missing Tokenizer**: The length check uses a naive `len(char) / 4` approximation. We should integrate a real fast tokenizer like `tiktoken`.
+
+### Sprint 31
+- **In-Memory Health State**: `InMemoryHealthTracker` hiện chỉ lưu trong bộ nhớ (in-memory), sẽ mất dữ liệu khi restart service.
+- **Lack of Multi-Process State**: Chưa có Redis/SQLite persistence cho health tracking, chạy gunicorn nhiều worker sẽ không đồng nhất.
+- **No Active Health Probe**: Chưa có cơ chế ping/health check định kỳ độc lập với traffic thực tế (active probe).
+- **Time Decay**: Thuật toán trừ điểm chưa có cơ chế phục hồi điểm theo thời gian chuẩn mực (decay function) hoàn chỉnh, ngoại trừ auth error.
+- **Dashboard**: Chưa có giao diện dashboard theo dõi provider health.
+- **Quality Signal**: Chưa có user feedback signal thực sự để chấm điểm model quality ngoài network layer.
