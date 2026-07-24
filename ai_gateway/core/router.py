@@ -31,7 +31,7 @@ class NoProviderAvailableException(Exception):
 class PolicyRouter:
     """Routes tasks to the most suitable AI provider based on capabilities and policies."""
     
-    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None, budget_manager: Optional[BudgetManager] = None, health_tracker: Optional[InMemoryHealthTracker] = None, statistics_updater: Optional[Any] = None):
+    def __init__(self, registry: CapabilityRegistry, circuit_breaker: Optional[CircuitBreaker] = None, cooldown_manager: Optional[ProviderCooldownManager] = None, budget_manager: Optional[BudgetManager] = None, health_tracker: Optional[InMemoryHealthTracker] = None, statistics_updater: Optional[Any] = None, adaptive_settings: Optional[Any] = None):
         self.registry = registry
         self.circuit_breaker = circuit_breaker
         self.cooldown_manager = cooldown_manager
@@ -42,6 +42,7 @@ class PolicyRouter:
             self.statistics_updater = get_global_statistics_updater()
         else:
             self.statistics_updater = statistics_updater
+        self.adaptive_settings = adaptive_settings
 
     def route(
         self,
@@ -136,8 +137,11 @@ class PolicyRouter:
             
             # Adaptive Routing Modifier (Sprint 33)
             stats_bonus_penalty = 0.0
-            from ai_gateway.config.settings import settings as global_settings
-            adaptive_enabled = getattr(global_settings, "adaptive_routing_enabled", True)
+            if self.adaptive_settings is None:
+                from ai_gateway.config.settings import settings as adaptive_settings
+            else:
+                adaptive_settings = self.adaptive_settings
+            adaptive_enabled = getattr(adaptive_settings, "adaptive_routing_enabled", True)
             
             if adaptive_enabled and self.statistics_updater:
                 stats = self.statistics_updater.get_stats(name)
@@ -148,17 +152,17 @@ class PolicyRouter:
                     rate_limit_rate = stats.rate_limit_count / total_events
                     
                     if success_rate >= 0.98:
-                        stats_bonus_penalty += getattr(global_settings, "historical_success_bonus", 2.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_success_bonus", 2.0)
                     if timeout_rate > 0.10:
-                        stats_bonus_penalty += getattr(global_settings, "historical_failure_penalty", -3.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_failure_penalty", -3.0)
                     if rate_limit_rate > 0.10 or stats.rate_limit_count > 2:
-                        stats_bonus_penalty += getattr(global_settings, "historical_rate_limit_penalty", -2.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_rate_limit_penalty", -2.0)
                     if stats.cache_hit_ratio > 0.30:
-                        stats_bonus_penalty += getattr(global_settings, "historical_cache_bonus", 2.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_cache_bonus", 2.0)
                     if stats.average_latency > 0 and stats.average_latency < 1500:
-                        stats_bonus_penalty += getattr(global_settings, "historical_latency_bonus", 1.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_latency_bonus", 1.0)
                     if stats.average_cost > 0 and stats.average_cost < 0.5:
-                        stats_bonus_penalty += getattr(global_settings, "historical_cost_bonus", 1.0)
+                        stats_bonus_penalty += getattr(adaptive_settings, "historical_cost_bonus", 1.0)
                     
                     score += stats_bonus_penalty
                     logger.info(f"Adaptive score bonus/penalty for {name}: {stats_bonus_penalty:.2f}")

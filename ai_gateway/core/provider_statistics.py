@@ -129,8 +129,8 @@ class StatisticsUpdater:
 
 _global_statistics_updater = None
 
-def get_global_statistics_updater() -> StatisticsUpdater:
+def get_global_statistics_updater(window_size: Optional[int] = None) -> StatisticsUpdater:
     global _global_statistics_updater
     if _global_statistics_updater is None:
-        _global_statistics_updater = StatisticsUpdater()
+        _global_statistics_updater = StatisticsUpdater(window_size=window_size or 50)
     return _global_statistics_updater

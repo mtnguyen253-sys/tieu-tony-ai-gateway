@@ -38,9 +38,14 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
         if getattr(app_settings, "health_scoring_enabled", True):
             health_tracker = InMemoryHealthTracker()
 
+    from ai_gateway.core.provider_statistics import StatisticsUpdater
+    statistics_updater = StatisticsUpdater(
+        window_size=getattr(app_settings, "adaptive_window_size", 50)
+    )
+
     if usage_ledger is None:
         from ai_gateway.core.usage import JsonlUsageLedger
-        usage_ledger = JsonlUsageLedger()
+        usage_ledger = JsonlUsageLedger(statistics_updater=statistics_updater)
 
     cooldown_manager = None
 
@@ -105,7 +110,14 @@ def create_app(orchestrator: Optional[ExecutionOrchestrator] = None, registry: O
     if orchestrator is None:
         cooldown_manager = cooldown_manager or ProviderCooldownManager()
         circuit_breaker = CircuitBreaker()
-        router = PolicyRouter(registry, circuit_breaker=circuit_breaker, cooldown_manager=cooldown_manager, health_tracker=health_tracker)
+        router = PolicyRouter(
+            registry,
+            circuit_breaker=circuit_breaker,
+            cooldown_manager=cooldown_manager,
+            health_tracker=health_tracker,
+            statistics_updater=statistics_updater,
+            adaptive_settings=app_settings,
+        )
         retry_strategy = NoRetryStrategy()
         fallback_strategy = ProviderFallbackStrategy(router)
 
