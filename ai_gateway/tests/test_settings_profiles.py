@@ -19,7 +19,7 @@ def test_settings_parse_providers():
         "AI_GATEWAY_PROVIDER_2_ENABLED": "false"
     }
     with patch.dict(os.environ, env_vars, clear=True):
-        settings = Settings()
+        settings = Settings(load_dotenv_file=False)
         assert len(settings.providers) == 2
         
         # Sort by name for reliable assertion
@@ -47,6 +47,6 @@ def test_settings_invalid_provider_ignored():
         # Missing base_url and model
     }
     with patch.dict(os.environ, env_vars, clear=True):
-        settings = Settings()
+        settings = Settings(load_dotenv_file=False)
         assert len(settings.providers) == 0
 

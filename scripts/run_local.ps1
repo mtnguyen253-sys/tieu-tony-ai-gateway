@@ -26,7 +26,7 @@ if (-not (Test-Path ".env")) {
 }
 
 # Run Uvicorn
-$UvicornArgs = @("ai_gateway.api.app:app")
+$UvicornArgs = @("ai_gateway.api.runtime:app")
 if ($Reload) {
     $UvicornArgs += "--reload"
 }

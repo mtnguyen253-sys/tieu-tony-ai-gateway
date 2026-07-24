@@ -61,7 +61,7 @@ def _parse_float(val: str, default: Optional[float] = None) -> Optional[float]:
         return default
 
 class Settings:
-    def __init__(self, env: Optional[Dict[str, str]] = None, load_dotenv_file: bool = True):
+    def __init__(self, env: Optional[Dict[str, str]] = None, load_dotenv_file: bool = False):
         if env is None and load_dotenv_file:
             try:
                 from dotenv import load_dotenv
@@ -202,4 +202,10 @@ class Settings:
             
         return providers
 
-settings = Settings()
+def load_settings_from_dotenv() -> Settings:
+    """Create settings for an explicit runtime entrypoint that loads .env."""
+    return Settings(load_dotenv_file=True)
+
+
+# Import-safe defaults: environment values may be used, but .env is never loaded.
+settings = Settings(load_dotenv_file=False)
