@@ -2,6 +2,12 @@
 
 This guide describes how to connect any standard, generic OpenAI-compatible clients (such as Lobe Chat, LibreChat, Chatbox, Cursor, VS Code Continue, etc.) to **Tiểu Tony AI Gateway**.
 
+## Provider-backed boundary
+
+This guide is configuration guidance for using generic OpenAI-compatible clients with the local gateway. Provider-free checks are limited to the local health and models endpoints documented below and in `README.md`, `RUN_LOCAL.md`, and `docs/CLIENT_COMPATIBILITY.md`.
+
+Live client chat, streaming, tool/function calling, usage-ledger writes, and end-to-end provider connectivity require separately approved provider configuration and live verification before they should be treated as verified for a specific client.
+
 ## 1. Connection Configuration
 
 Most standard OpenAI-compatible applications will ask for the following parameter fields:
@@ -29,9 +35,9 @@ If configuring an IDE extension, define the custom model in your configuration J
 }
 ```
 
-## 3. Verification
+## 3. Provider-free verification
 
-Before integrating, you can verify that the gateway is running properly:
+Before provider-backed integration, you can verify that the gateway process is reachable:
 
 ### Check Health
 ```bash
