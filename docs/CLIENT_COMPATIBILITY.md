@@ -39,7 +39,7 @@ When configuring any external client to route requests through the gateway, use 
 
 ## 2. Compatibility Matrix
 
-The gateway supports the core OpenAI Chat Completions API specification:
+The gateway implements a core OpenAI-compatible Chat Completions surface. Health and models have provider-free verification; chat, streaming, tool/function calling, usage-ledger behavior, and external-client behavior remain provider-backed verification scopes.
 
 ### ðŸŸ¢ `base_url` Customization
 - **Requirement**: Client must support pointing to custom third-party endpoints.
@@ -55,7 +55,7 @@ The gateway supports the core OpenAI Chat Completions API specification:
 
 ### ðŸŸ¢ Chat Streaming (`stream: true`)
 - **Requirement**: Interactive assistants (e.g., terminal code helpers) require real-time streaming chunks.
-- **Implementation**: Fully supported! The gateway proxies chunks from backend providers using server-sent events (`text/event-stream`), retaining compatibility with the OpenAI SDK streaming parser.
+- **Implementation**: Implemented as a provider-backed path. The gateway proxies chunks from backend providers using server-sent events (`text/event-stream`), but live provider/client streaming verification is separate from the provider-free health/models scope.
 
 ### ðŸŸ¢ Models List (`/v1/models`)
 - **Requirement**: Client applications query `/v1/models` to discover which LLMs are available.
@@ -63,7 +63,7 @@ The gateway supports the core OpenAI Chat Completions API specification:
 
 ### ðŸŸ¢ Tool & Function Calling (`tools` & `tool_choice`)
 - **Requirement**: Advanced agents pass schema-defined JSON tools for execution.
-- **Implementation**: Passes-through standard OpenAI-format `tools` schemas to backend providers. Returns standard `tool_calls` structure inside JSON/streaming response blocks.
+- **Implementation**: Provider-backed compatibility claim. Tool/function calling behavior requires separate live/provider or targeted contract verification before it should be treated as verified for a specific client.
 
 ---
 
@@ -83,6 +83,8 @@ The gateway supports the core OpenAI Chat Completions API specification:
 ## 4. Usage Ledger Verification
 
 To verify that requests made by external clients are being recorded properly:
+Provider-backed live/client scope. Do not use this as provider-free verification.
+
 1. Trigger a chat completion request using any configured client.
 2. Verify that a new entry appears in `logs/usage.jsonl`.
 3. Run the usage summary utility to view analytics:
