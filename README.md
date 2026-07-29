@@ -1,20 +1,34 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Tieu Tony AI Gateway
 
-# Run and deploy your AI Studio app
+Tieu Tony is a lightweight OpenAI-compatible gateway for routing requests across AI providers.
 
-This contains everything you need to run your app locally.
+## Provider-Free Local Runtime
 
-View your app in AI Studio: https://ai.studio/apps/2ddf422d-f16b-4b9e-94c4-ce41bbd3de11
+The documented local runtime entrypoint is:
 
-## Run Locally
+```powershell
+python -m uvicorn ai_gateway.api.runtime:app --host 127.0.0.1 --port 8000
+```
 
-**Prerequisites:**  Node.js
+The provider-free runtime surface verified by recent reports is:
 
+```powershell
+curl http://127.0.0.1:8000/v1/health
+curl http://127.0.0.1:8000/v1/models
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+These checks do not require provider API keys, network calls, live provider verification, or Lao Tony integration. `/v1/models` may return an empty `data` list when no provider is configured or enabled.
+
+## Provider-Backed Runtime
+
+Chat completions, streaming, external client smoke scripts, usage ledgers, provider statistics, and provider-backed model enumeration require separately configured providers and should be treated as a separate verification scope.
+
+Do not treat provider-free health/models verification as proof that live provider chat, streaming, external clients, or provider connectivity have passed.
+
+## Local Docs
+
+- `RUN_LOCAL.md` - local runtime and verification commands
+- `docs/CLIENT_COMPATIBILITY.md` - OpenAI-compatible client configuration boundaries
+- `docs/clients/` - client-specific configuration templates
+- `REPORT_SPRINT_37.md` - explicit runtime `/v1/health` verification
+- `REPORT_SPRINT_38.md` - provider-free `/v1/models` verification

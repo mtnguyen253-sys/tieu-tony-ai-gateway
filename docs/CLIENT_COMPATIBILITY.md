@@ -4,6 +4,27 @@ This document provides a comprehensive checklist and compatibility guide for int
 
 ---
 
+## Provider-Free Verification Boundary
+
+The documented local runtime entrypoint is:
+
+```powershell
+python -m uvicorn ai_gateway.api.runtime:app --host 127.0.0.1 --port 8000
+```
+
+The provider-free endpoint surface verified by recent reports is:
+
+```powershell
+curl http://127.0.0.1:8000/v1/health
+curl http://127.0.0.1:8000/v1/models
+```
+
+These checks do not require provider API keys, provider network calls, live chat verification, external-client smoke verification, or Lao Tony integration. `/v1/models` may return an empty `data` list when no provider is configured or enabled.
+
+The remaining client compatibility guidance is configuration guidance for provider-backed use. It does not mean live provider chat, streaming, tool calling, usage-ledger recording, or every external client listed here has been verified in the current provider-free scope.
+
+---
+
 ## 1. Gateway Connection Parameters
 
 When configuring any external client to route requests through the gateway, use the following configuration schema:

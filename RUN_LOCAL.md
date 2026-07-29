@@ -19,7 +19,28 @@ python -m venv .venv
 python -m pip install -r requirements-dev.txt
 ```
 
+## Provider-free runtime boundary
+
+For provider-free local verification, use the explicit runtime entrypoint:
+
+```powershell
+python -m uvicorn ai_gateway.api.runtime:app --host 127.0.0.1 --port 8000
+```
+
+The following local checks are provider-free and were verified in recent reports:
+
+```powershell
+curl http://127.0.0.1:8000/v1/health
+curl http://127.0.0.1:8000/v1/models
+```
+
+Provider-free health/models checks do not require provider API keys, live provider calls, network calls, Lao Tony integration, or reading local secret values. `/v1/models` may return an empty `data` list when no provider is configured or enabled.
+
+Chat completions, streaming, external-client smoke scripts, usage-ledger checks, provider statistics, and provider-backed model enumeration are provider-backed scopes. Run them only when provider configuration and live verification are separately approved.
+
 ## 4. Cấu hình môi trường (.env)
+
+This section is for provider-backed runtime configuration. It is not required for the provider-free `/v1/health` and `/v1/models` checks above.
 
 Bạn có thể cấu hình provider theo 2 cách:
 
@@ -67,6 +88,8 @@ python -m ai_gateway.tools.config_check
 ```
 
 ## 7. Chạy Smoke Test (Sprint 29)
+Provider-backed smoke scope. Do not use this as a provider-free check.
+
 Chạy smoke test để xác thực runtime provider selection:
 ```powershell
 python examples/smoke_runtime_selection.py
@@ -79,6 +102,8 @@ curl http://127.0.0.1:8000/v1/models
 ```
 
 ## 9. Test Non-streaming Request
+Provider-backed live/chat scope. Requires separately approved provider configuration and live verification.
+
 ```powershell
 @'
 {
@@ -95,6 +120,8 @@ curl.exe -X POST http://127.0.0.1:8000/v1/chat/completions `
 ```
 
 ## 10. Test Streaming Request
+Provider-backed live/streaming scope. Requires separately approved provider configuration and live verification.
+
 ```powershell
 @'
 {
@@ -112,6 +139,8 @@ curl.exe -N -X POST http://127.0.0.1:8000/v1/chat/completions `
 ```
 
 ## 11. Test OpenAI SDK
+External-client live/smoke scope. Requires separately approved provider-backed verification.
+
 Chạy script smoke test bằng Python (đảm bảo package `openai` đã được cài):
 ```powershell
 python examples/smoke_openai_sdk.py
